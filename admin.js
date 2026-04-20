@@ -617,10 +617,14 @@ function getPaidCompletedRecords() {
   return completedRecords.filter((entry) => entry?.order?.paymentStatus === "paid");
 }
 
+function getAdminRegistrationEntries() {
+  return uiState.remoteAdminLoaded ? remoteRegistrations : getPaidCompletedRecords();
+}
+
 function getFilteredAdminRegistrations() {
   const filter = uiState.adminRegistrationFilter;
   const query = uiState.adminRegistrationSearch.trim();
-  return getPaidCompletedRecords().filter(({ record }) => {
+  return getAdminRegistrationEntries().filter(({ record }) => {
     if (!record) return false;
     const statusMatch = filter === "all" || record.status === filter;
     const queryMatch =
@@ -634,7 +638,7 @@ function getFilteredAdminRegistrations() {
 
 function getSelectedAdminRegistration() {
   if (!uiState.selectedRegistrationNo) return null;
-  return completedRecords.find((entry) => entry?.record?.registrationNo === uiState.selectedRegistrationNo) || null;
+  return getAdminRegistrationEntries().find((entry) => entry?.record?.registrationNo === uiState.selectedRegistrationNo) || null;
 }
 
 function openAdminRegistrationDetail(registrationNo) {
@@ -644,15 +648,31 @@ function openAdminRegistrationDetail(registrationNo) {
   goToPage("admin_registration_detail");
 }
 
-function approveRegistration(registrationNo) {
-  const entry = completedRecords.find((item) => item?.record?.registrationNo === registrationNo);
+async function approveRegistration(registrationNo) {
+  const entry = getSelectedAdminRegistration();
   if (!entry || entry.record.status !== "pending_review" || entry.order?.paymentStatus !== "paid") {
     showToast("当前报名不可审核");
     return;
   }
 
+  const reviewedAt = nowIso();
+  try {
+    const remoteEntry = await reviewRemoteRegistration(registrationNo, "approved", "");
+    if (remoteEntry) {
+      upsertRemoteRegistrationEntry(remoteEntry);
+      upsertLocalCompletedEntry(remoteEntry);
+      syncReviewedRecordToActiveState(remoteEntry.record);
+      saveState();
+      showToast("已审核通过");
+      render();
+      return;
+    }
+  } catch (error) {
+    console.warn("reviewRemoteRegistration approved failed", error);
+  }
+
   entry.record.status = "approved";
-  entry.record.reviewedAt = nowIso();
+  entry.record.reviewedAt = reviewedAt;
   entry.record.rejectReason = "";
   syncReviewedRecordToActiveState(entry.record);
   saveState();
@@ -660,8 +680,8 @@ function approveRegistration(registrationNo) {
   render();
 }
 
-function rejectRegistration(registrationNo, reason) {
-  const entry = completedRecords.find((item) => item?.record?.registrationNo === registrationNo);
+async function rejectRegistration(registrationNo, reason) {
+  const entry = getSelectedAdminRegistration();
   const rejectReason = safeText(reason).trim();
   if (!entry || entry.record.status !== "pending_review" || entry.order?.paymentStatus !== "paid") {
     showToast("当前报名不可驳回");
@@ -672,8 +692,24 @@ function rejectRegistration(registrationNo, reason) {
     return;
   }
 
+  const reviewedAt = nowIso();
+  try {
+    const remoteEntry = await reviewRemoteRegistration(registrationNo, "rejected", rejectReason);
+    if (remoteEntry) {
+      upsertRemoteRegistrationEntry(remoteEntry);
+      upsertLocalCompletedEntry(remoteEntry);
+      syncReviewedRecordToActiveState(remoteEntry.record);
+      saveState();
+      showToast("已驳回报名");
+      render();
+      return;
+    }
+  } catch (error) {
+    console.warn("reviewRemoteRegistration rejected failed", error);
+  }
+
   entry.record.status = "rejected";
-  entry.record.reviewedAt = nowIso();
+  entry.record.reviewedAt = reviewedAt;
   entry.record.rejectReason = rejectReason;
   syncReviewedRecordToActiveState(entry.record);
   saveState();
@@ -690,12 +726,25 @@ function syncReviewedRecordToActiveState(record) {
   formDraft.updatedAt = nowIso();
 }
 
+function upsertRemoteRegistrationEntry(entry) {
+  if (!entry?.record?.registrationNo) return;
+  remoteRegistrations = remoteRegistrations.filter((item) => item?.record?.registrationNo !== entry.record.registrationNo);
+  remoteRegistrations.unshift(entry);
+}
+
+function upsertLocalCompletedEntry(entry) {
+  if (!entry?.record?.registrationNo) return;
+  completedRecords = completedRecords.filter((item) => item?.record?.registrationNo !== entry.record.registrationNo);
+  completedRecords.unshift(entry);
+}
+
 function getRegistrationStats() {
-  const paidRecords = getPaidCompletedRecords();
+  const sourceRecords = getAdminRegistrationEntries();
+  const paidRecords = sourceRecords.filter((entry) => entry?.order?.paymentStatus === "paid");
   const groupCounts = {};
   const eventCounts = {};
 
-  completedRecords.forEach(({ record }) => {
+  sourceRecords.forEach(({ record }) => {
     const groupName = safeText(record?.groupName || "未分组");
     groupCounts[groupName] = (groupCounts[groupName] || 0) + 1;
     normalizeArray(record?.eventNames).forEach((eventName) => {
@@ -704,7 +753,7 @@ function getRegistrationStats() {
   });
 
   return {
-    total: completedRecords.length,
+    total: sourceRecords.length,
     paid: paidRecords.length,
     pendingReview: paidRecords.filter(({ record }) => record?.status === "pending_review").length,
     approved: paidRecords.filter(({ record }) => record?.status === "approved").length,

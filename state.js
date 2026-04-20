@@ -159,6 +159,7 @@ let formDraft = createEmptyDraft();
 let registrationRecord = null;
 let order = createEmptyOrder();
 let completedRecords = [];
+let remoteRegistrations = [];
 let adminDraft = null;
 let adminAuth = { isLoggedIn: false };
 let bannerUrlValidationTimer = null;
@@ -178,6 +179,8 @@ const uiState = {
   lastAutoParsedIdNumber: "",
   lastInvalidIdNumber: "",
   lastDuplicateCertificateNumber: "",
+  remoteAdminLoaded: false,
+  remoteAdminLoading: false,
   adminLogin: {
     username: "",
     password: "",

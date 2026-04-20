@@ -8,7 +8,7 @@ const moreMenuRoot = document.querySelector("#moreMenuRoot");
 
 init();
 
-function init() {
+async function init() {
   loadAdminAuth();
   loadConfig();
   loadState();
@@ -17,6 +17,8 @@ function init() {
   restorePageFromHistoryState();
   bindEvents();
   render();
+  await hydrateInitialRemoteData();
+  render();
 }
 
 function bindEvents() {
@@ -24,6 +26,63 @@ function bindEvents() {
   document.addEventListener("input", handleInput);
   document.addEventListener("change", handleChange);
   window.addEventListener("popstate", handlePopState);
+}
+
+async function hydrateInitialRemoteData() {
+  await loadRemoteEventIntoState();
+  await loadRemoteOrganizationsIntoState();
+  normalizeDraftAfterConfigChange({ silent: true });
+  syncDerivedDraftFields();
+}
+
+async function loadRemoteEventIntoState() {
+  try {
+    const remoteEvent = await loadRemoteEvent();
+    if (!remoteEvent) return;
+    const currentEvent = getCurrentEventConfig();
+    appState.eventConfig = sanitizeEventConfig(mergeRemoteEventConfig(currentEvent, remoteEvent));
+    formDraft.eventId = appState.eventConfig.id;
+  } catch (error) {
+    console.warn("loadRemoteEvent failed", error);
+  }
+}
+
+function mergeRemoteEventConfig(currentEvent, remoteEvent) {
+  return {
+    ...currentEvent,
+    id: safeText(remoteEvent.id || currentEvent.id),
+    name: safeText(remoteEvent.name || currentEvent.name),
+    registrationStartDate: safeText(remoteEvent.registrationStartDate || currentEvent.registrationStartDate),
+    registrationEndDate: safeText(remoteEvent.registrationEndDate || currentEvent.registrationEndDate),
+    competitionStartDate: safeText(remoteEvent.competitionStartDate || currentEvent.competitionStartDate),
+    competitionEndDate: safeText(remoteEvent.competitionEndDate || currentEvent.competitionEndDate),
+    location: safeText(remoteEvent.location || currentEvent.location),
+    regulationFile: {
+      name: safeText(remoteEvent.regulationFile?.name || currentEvent.regulationFile?.name),
+      url: safeText(remoteEvent.regulationFile?.url || currentEvent.regulationFile?.url),
+    },
+    commitmentFile: {
+      name: safeText(remoteEvent.commitmentFile?.name || currentEvent.commitmentFile?.name),
+      url: safeText(remoteEvent.commitmentFile?.url || currentEvent.commitmentFile?.url),
+    },
+    bannerImage: remoteEvent.bannerImage?.url ? remoteEvent.bannerImage : currentEvent.bannerImage,
+    shareCard: {
+      title: safeText(remoteEvent.shareCard?.title || currentEvent.shareCard?.title),
+      description: safeText(remoteEvent.shareCard?.description || currentEvent.shareCard?.description),
+      imageUrl: safeText(remoteEvent.shareCard?.imageUrl || currentEvent.shareCard?.imageUrl),
+    },
+    description: remoteEvent.description?.length ? remoteEvent.description : currentEvent.description,
+  };
+}
+
+async function loadRemoteOrganizationsIntoState() {
+  try {
+    const organizations = await loadRemoteOrganizations();
+    if (!organizations?.length) return;
+    appState.registrationConfig.organizations = organizations;
+  } catch (error) {
+    console.warn("loadRemoteOrganizations failed", error);
+  }
 }
 
 function restorePageFromHistoryState() {
@@ -540,12 +599,14 @@ function renderBottomBar() {
   }
 }
 
-function submitFormStep() {
+async function submitFormStep() {
+  if (uiState.isSubmitting) return;
   uiState.isSubmitting = true;
+  renderBottomBar();
   const valid = validateDraft({ showErrors: true });
-  uiState.isSubmitting = false;
 
   if (!valid) {
+    uiState.isSubmitting = false;
     render();
     if (shouldShowIdCardBlockingModal()) {
       showIdCardBlockingModal();
@@ -555,13 +616,23 @@ function submitFormStep() {
     return;
   }
 
+  const remoteDuplicateMessage = await validateRemoteDuplicateBeforeSubmit();
+  if (remoteDuplicateMessage) {
+    uiState.isSubmitting = false;
+    setDraftFieldError("certificateNumber", remoteDuplicateMessage);
+    render();
+    showToast(remoteDuplicateMessage);
+    return;
+  }
+
   formDraft.status = "draft";
   formDraft.updatedAt = nowIso();
   saveState();
+  uiState.isSubmitting = false;
   goToPage("confirm");
 }
 
-function submitConfirmation() {
+async function submitConfirmation() {
   if (!validateDraft({ showErrors: true })) {
     goToPage("form");
     if (shouldShowIdCardBlockingModal()) {
@@ -569,6 +640,13 @@ function submitConfirmation() {
       return;
     }
     showToast(getFirstValidationErrorMessage() || "请先修正报名信息");
+    return;
+  }
+  const remoteDuplicateMessage = await validateRemoteDuplicateBeforeSubmit();
+  if (remoteDuplicateMessage) {
+    setDraftFieldError("certificateNumber", remoteDuplicateMessage);
+    goToPage("form");
+    showToast(remoteDuplicateMessage);
     return;
   }
   goToPage("payment");
@@ -644,7 +722,7 @@ function payMockOrder() {
   uiState.isPaying = true;
   renderBottomBar();
 
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     const paidAt = nowIso();
     order.paymentStatus = "paid";
     order.paidAt = paidAt;
@@ -656,13 +734,24 @@ function payMockOrder() {
     formDraft.updatedAt = paidAt;
 
     saveCompletedRegistration();
+    await saveRemoteRegistrationAfterPayment();
     uiState.isPaying = false;
     saveState();
     goToPage("success");
   }, 700);
 }
 
-function searchRegistration() {
+async function saveRemoteRegistrationAfterPayment() {
+  try {
+    const remoteEntry = await createRemoteRegistration(registrationRecord, order);
+    if (remoteEntry) upsertRemoteRegistrationEntry(remoteEntry);
+  } catch (error) {
+    console.warn("createRemoteRegistration failed", error);
+    showToast("远程保存失败，已保留本地报名记录");
+  }
+}
+
+async function searchRegistration() {
   const query = uiState.lookupQuery.trim();
   uiState.lookupSearched = true;
 
@@ -671,6 +760,17 @@ function searchRegistration() {
     render();
     showToast("请输入手机号、证件号或报名编号");
     return;
+  }
+
+  try {
+    const remoteResults = await searchRemoteRegistrations(query);
+    if (Array.isArray(remoteResults)) {
+      uiState.lookupResults = remoteResults;
+      render();
+      return;
+    }
+  } catch (error) {
+    console.warn("searchRemoteRegistrations failed", error);
   }
 
   uiState.lookupResults = completedRecords.filter(({ record, order: recordOrder }) => {
@@ -922,6 +1022,7 @@ function goToPage(page, options = {}) {
   render();
   saveState();
   scrollAppToTop();
+  refreshRemoteDataForPage(page);
 }
 
 function preparePageNavigation(page) {
@@ -930,6 +1031,28 @@ function preparePageNavigation(page) {
   if (nextPage === "payment") ensurePendingOrder();
   if (nextPage === "admin_config") ensureAdminDraft();
   return nextPage;
+}
+
+async function refreshRemoteDataForPage(page) {
+  if (!["admin_registrations", "admin_registration_detail", "admin_stats"].includes(page) || !isAdminLoggedIn()) return;
+  await refreshRemoteAdminRegistrations();
+}
+
+async function refreshRemoteAdminRegistrations() {
+  if (!isRemoteEnabled() || uiState.remoteAdminLoading) return;
+  uiState.remoteAdminLoading = true;
+  try {
+    const rows = await searchRemoteRegistrations("");
+    if (Array.isArray(rows)) {
+      remoteRegistrations = rows;
+      uiState.remoteAdminLoaded = true;
+      render();
+    }
+  } catch (error) {
+    console.warn("refreshRemoteAdminRegistrations failed", error);
+  } finally {
+    uiState.remoteAdminLoading = false;
+  }
 }
 
 function getHistoryPage() {
@@ -1033,6 +1156,7 @@ function handleIdCardValidationAndAutoFill(changedField) {
     }
   } else {
     uiState.lastDuplicateCertificateNumber = "";
+    checkRemoteDuplicateInBackground(value);
   }
 
   const previousGender = formDraft.gender;
@@ -1228,6 +1352,33 @@ function findDuplicateRegistration(eventId, certificateNumber) {
       return !canCreateNewRegistration(record);
     }) || null
   );
+}
+
+async function checkRemoteDuplicateInBackground(certificateNumber) {
+  try {
+    const eventId = formDraft.eventId || getCurrentEventConfig().id;
+    const duplicate = await findRemoteDuplicateRegistration(eventId, certificateNumber);
+    const currentCertificateNumber = normalizeCertificateForDuplicate(formDraft.certificateNumber);
+    if (!duplicate || currentCertificateNumber !== normalizeCertificateForDuplicate(certificateNumber)) return;
+    const message = getDuplicateRegistrationMessage(duplicate.record.status);
+    setDraftFieldError("certificateNumber", message);
+    if (uiState.lastDuplicateCertificateNumber !== currentCertificateNumber) {
+      uiState.lastDuplicateCertificateNumber = currentCertificateNumber;
+      showToast(message);
+    }
+  } catch (error) {
+    console.warn("findRemoteDuplicateRegistration failed", error);
+  }
+}
+
+async function validateRemoteDuplicateBeforeSubmit() {
+  try {
+    const duplicate = await findRemoteDuplicateRegistration(formDraft.eventId || getCurrentEventConfig().id, formDraft.certificateNumber);
+    return duplicate ? getDuplicateRegistrationMessage(duplicate.record.status) : "";
+  } catch (error) {
+    console.warn("validateRemoteDuplicateBeforeSubmit failed", error);
+    return "";
+  }
 }
 
 function normalizeCertificateForDuplicate(value) {
