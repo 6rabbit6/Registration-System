@@ -60,12 +60,11 @@ function renderFormPage() {
         ${radioRow("性别", "gender", [{ value: "male", label: "男" }, { value: "female", label: "女" }], formDraft.gender)}
         ${dateRow("出生日期", "birthDate", formDraft.birthDate)}
         ${renderOrganizationSelectRow()}
-        <div class="form-row ${errors.groupId ? "has-error" : ""}">
-          <label for="groupId">参赛组别</label>
-          <select id="groupId" name="groupId" data-draft-field ${canPickGroup ? "" : "disabled"}>
-            <option value="">${canPickGroup ? "请单选 参赛组别" : "请先选择性别和出生日期"}</option>
-            ${groups.map((group) => `<option value="${group.id}" ${formDraft.groupId === group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("")}
-          </select>
+        <div class="form-row picker-form-row ${errors.groupId ? "has-error" : ""}">
+          <span class="row-label">参赛组别</span>
+          <button class="picker-row-button ${formDraft.groupName ? "" : "is-placeholder"}" type="button" data-action="open-wheel-picker" data-picker-type="group" ${canPickGroup ? "" : "disabled"}>
+            ${escapeHtml(formDraft.groupName || (canPickGroup ? "请单选 参赛组别" : "请先选择性别和出生日期"))}
+          </button>
           <span class="row-arrow">›</span>
           ${fieldError("groupId")}
         </div>
@@ -247,15 +246,11 @@ function renderOrganizationSelectRow() {
   const hasLegacyUnmatched = legacyOrganization && !organizations.some((item) => item.id === selectedId || item.name === legacyOrganization);
 
   return `
-    <div class="form-row ${fieldErrorClass("organization")}">
-      <label for="organizationId">代表单位</label>
-      <select id="organizationId" name="organizationId" data-draft-field ${organizations.length ? "" : "disabled"}>
-        <option value="">${organizations.length ? "请选择代表单位" : "暂无可选代表单位"}</option>
-        ${hasLegacyUnmatched ? `<option value="" selected>原单位：${escapeHtml(legacyOrganization)}（请重新选择）</option>` : ""}
-        ${organizations
-          .map((item) => `<option value="${escapeHtml(item.id)}" ${selectedId === item.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`)
-          .join("")}
-      </select>
+    <div class="form-row picker-form-row ${fieldErrorClass("organization")}">
+      <span class="row-label">代表单位</span>
+      <button class="picker-row-button ${formDraft.organization ? "" : "is-placeholder"}" type="button" data-action="open-wheel-picker" data-picker-type="organization" ${organizations.length ? "" : "disabled"}>
+        ${escapeHtml(formDraft.organization || (organizations.length ? "请选择代表单位" : "暂无可选代表单位"))}
+      </button>
       <span class="row-arrow">›</span>
       ${hasLegacyUnmatched ? `<small class="field-note">原代表单位未在当前配置中，请重新选择。</small>` : ""}
       ${fieldError("organization")}

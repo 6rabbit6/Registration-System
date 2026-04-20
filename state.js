@@ -181,6 +181,13 @@ const uiState = {
   selectedRegistrationNo: "",
   rejectReasonDraft: "",
   moreMenuOpen: false,
+  wheelPicker: {
+    open: false,
+    type: "",
+    options: [],
+    selectedValue: "",
+    tempValue: "",
+  },
 };
 
 function isAdminLoggedIn() {

@@ -40,6 +40,10 @@ function handlePopState(event) {
 }
 
 function handleClick(eventTarget) {
+  if (eventTarget.target.closest(".wheel-picker-panel") && !eventTarget.target.closest("[data-action]")) {
+    return;
+  }
+
   const actionButton = eventTarget.target.closest("[data-action]");
   if (!actionButton) {
     if (uiState.moreMenuOpen && !eventTarget.target.closest(".more-menu-panel")) {
@@ -56,6 +60,22 @@ function handleClick(eventTarget) {
   }
   if (action === "close-more-menu") {
     closeMoreMenu();
+    return;
+  }
+  if (action === "open-wheel-picker") {
+    openWheelPicker(actionButton.dataset.pickerType);
+    return;
+  }
+  if (action === "close-wheel-picker") {
+    closeWheelPicker();
+    return;
+  }
+  if (action === "confirm-wheel-picker") {
+    confirmWheelPicker();
+    return;
+  }
+  if (action === "select-wheel-option") {
+    selectWheelPickerOption(actionButton.dataset.value);
     return;
   }
   if (uiState.moreMenuOpen) closeMoreMenu();
@@ -305,6 +325,7 @@ function render() {
   uiState.currentStep = getCurrentStep();
   renderProgress();
   renderMoreMenu();
+  renderWheelPicker();
 
   const renderers = {
     detail: renderDetailPage,
@@ -353,7 +374,7 @@ function renderMoreMenu() {
       <button type="button" role="menuitem" data-action="menu-go-admin-config">后台配置</button>
       <button type="button" role="menuitem" data-action="menu-export-approved">导出正式名单 JSON</button>
     `
-    : "";
+    : `<button type="button" role="menuitem" data-action="admin-entry">后台登录</button>`;
 
   moreMenuRoot.innerHTML = `
     <div class="more-menu-backdrop" data-action="close-more-menu" aria-hidden="true"></div>
@@ -364,6 +385,57 @@ function renderMoreMenu() {
       ${adminItems}
     </div>
   `;
+}
+
+function renderWheelPicker() {
+  if (!modalRoot) return;
+  const picker = uiState.wheelPicker || {};
+  if (!picker.open) {
+    modalRoot.innerHTML = "";
+    return;
+  }
+
+  const selectedValue = picker.tempValue || picker.selectedValue || picker.options[0]?.value || "";
+  const selectedOption = picker.options.find((item) => item.value === selectedValue) || picker.options[0];
+  const title = picker.type === "organization" ? "选择代表单位" : "选择参赛组别";
+
+  modalRoot.innerHTML = `
+    <div class="wheel-picker-mask" data-action="close-wheel-picker">
+      <section class="wheel-picker-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" data-action="noop">
+        <div class="wheel-picker-toolbar">
+          <button type="button" data-action="close-wheel-picker">取消</button>
+          <strong>${escapeHtml(title)}</strong>
+          <button type="button" data-action="confirm-wheel-picker">确定</button>
+        </div>
+        <div class="wheel-picker-window">
+          <div class="wheel-picker-highlight" aria-hidden="true"></div>
+          <div class="wheel-picker-list" role="listbox" aria-activedescendant="wheel-option-${escapeHtml(selectedValue)}">
+            ${picker.options
+              .map(
+                (option) => `
+                  <button
+                    id="wheel-option-${escapeHtml(option.value)}"
+                    class="wheel-picker-option ${option.value === selectedOption?.value ? "is-active" : ""}"
+                    type="button"
+                    role="option"
+                    aria-selected="${option.value === selectedOption?.value ? "true" : "false"}"
+                    data-action="select-wheel-option"
+                    data-value="${escapeHtml(option.value)}"
+                  >
+                    ${escapeHtml(option.label)}
+                  </button>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+
+  window.requestAnimationFrame?.(() => {
+    modalRoot.querySelector(".wheel-picker-option.is-active")?.scrollIntoView({ block: "center" });
+  });
 }
 
 function renderBottomBar() {
@@ -620,6 +692,74 @@ function startRegistration() {
 function closeMoreMenu() {
   uiState.moreMenuOpen = false;
   renderMoreMenu();
+}
+
+function openWheelPicker(type) {
+  const pickerType = type === "organization" ? "organization" : "group";
+  const options = getWheelPickerOptions(pickerType);
+
+  if (!options.length) {
+    showToast(pickerType === "group" ? "暂无可选组别" : "暂无可选代表单位");
+    return;
+  }
+
+  const selectedValue = pickerType === "organization" ? formDraft.organizationId : formDraft.groupId;
+  uiState.wheelPicker = {
+    open: true,
+    type: pickerType,
+    options,
+    selectedValue,
+    tempValue: selectedValue || options[0].value,
+  };
+  renderWheelPicker();
+}
+
+function closeWheelPicker() {
+  uiState.wheelPicker = {
+    open: false,
+    type: "",
+    options: [],
+    selectedValue: "",
+    tempValue: "",
+  };
+  renderWheelPicker();
+}
+
+function selectWheelPickerOption(value) {
+  if (!uiState.wheelPicker?.open) return;
+  uiState.wheelPicker.tempValue = safeText(value);
+  renderWheelPicker();
+}
+
+function confirmWheelPicker() {
+  const picker = uiState.wheelPicker;
+  if (!picker?.open) return;
+
+  const value = picker.tempValue || picker.selectedValue || picker.options[0]?.value || "";
+  const type = picker.type;
+  closeWheelPicker();
+
+  if (!value) return;
+  if (type === "organization") {
+    updateDraftField("organizationId", value, { renderAfter: true });
+    return;
+  }
+  updateDraftField("groupId", value, { renderAfter: true });
+}
+
+function getWheelPickerOptions(type) {
+  if (type === "organization") {
+    return getEnabledOrganizations().map((item) => ({
+      value: item.id,
+      label: item.name,
+    }));
+  }
+
+  if (!formDraft.gender || !formDraft.birthYear) return [];
+  return getAvailableGroups(formDraft).map((group) => ({
+    value: group.id,
+    label: group.name,
+  }));
 }
 
 async function handleShareEvent() {
