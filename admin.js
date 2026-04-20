@@ -66,6 +66,7 @@ function renderAdminRegistrationListItem(entry) {
   const record = entry.record || {};
   const recordOrder = entry.order || {};
   const canReview = record.status === "pending_review";
+  const paymentAmount = getAdminPaymentAmount(record, recordOrder);
   return `
     <div class="admin-registration-item">
       <div class="admin-registration-item-head">
@@ -76,7 +77,7 @@ function renderAdminRegistrationListItem(entry) {
       ${plainRow("单位", record.organization)}
       ${plainRow("组别", record.groupName)}
       ${plainRow("项目", normalizeArray(record.eventNames).join("、"))}
-      ${plainRow("支付状态", paymentStatusLabel(recordOrder.paymentStatus))}
+      ${plainRow("支付信息", `${paymentStatusLabel(recordOrder.paymentStatus)}｜${formatCurrency(paymentAmount)}`)}
       ${plainRow("审核状态", statusLabel(record.status))}
       <div class="admin-registration-actions">
         <button type="button" data-action="admin-view-registration" data-registration-no="${escapeHtml(record.registrationNo)}">${canReview ? "查看/审核" : "查看详情"}</button>
@@ -102,6 +103,8 @@ function renderAdminRegistrationDetailPage() {
   const record = selected.record || {};
   const recordOrder = selected.order || {};
   const canReview = record.status === "pending_review";
+  const paymentAmount = getAdminPaymentAmount(record, recordOrder);
+  const paidAtText = formatDateTime(recordOrder.paidAt);
   const insuranceContent = record.insuranceFile?.previewUrl
     ? `<img class="readonly-image" src="${record.insuranceFile.previewUrl}" alt="保险单预览" />`
     : escapeHtml(record.insuranceFile?.name || (record.insuranceFile ? "已上传" : "未上传"));
@@ -122,6 +125,8 @@ function renderAdminRegistrationDetailPage() {
         ${readonlyRow("报名编号", record.registrationNo)}
         ${readonlyRow("订单号", recordOrder.orderNo)}
         ${readonlyRow("支付状态", paymentStatusLabel(recordOrder.paymentStatus))}
+        ${readonlyRow("支付金额", formatCurrency(paymentAmount))}
+        ${paidAtText ? readonlyRow("支付时间", paidAtText) : ""}
         ${readonlyRow("审核状态", statusLabel(record.status))}
         ${readonlyRow("驳回原因", record.rejectReason || "暂无")}
       </section>
@@ -521,6 +526,10 @@ function renderGroupAdvancedOptions(group, groupIndex) {
 function adminFilterButton(label, value) {
   const active = uiState.adminRegistrationFilter === value;
   return `<button class="${active ? "is-active" : ""}" type="button" data-action="admin-filter-registrations" data-filter="${value}">${escapeHtml(label)}</button>`;
+}
+
+function getAdminPaymentAmount(record, recordOrder) {
+  return Number(recordOrder?.amount ?? record?.totalAmount ?? 0) || 0;
 }
 
 function statCard(label, value) {
