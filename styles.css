@@ -1382,6 +1382,10 @@ button {
   text-align: right;
 }
 
+.field-error.is-empty {
+  display: none;
+}
+
 .has-error {
   background: #fffafa;
 }
@@ -1863,6 +1867,10 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   border-top: 1px solid var(--soft-line);
+}
+
+.modal-actions.is-single {
+  grid-template-columns: 1fr;
 }
 
 .modal-actions button {

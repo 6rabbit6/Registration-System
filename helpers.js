@@ -147,10 +147,31 @@ function parseBirthYear(dateText) {
 }
 
 function parseChineseIdCard(idNumber) {
+  const validation = validateChineseIdCard(idNumber);
+  return validation.valid
+    ? {
+        birthDate: validation.birthDate,
+        gender: validation.gender,
+      }
+    : null;
+}
+
+function validateChineseIdCard(idNumber) {
   const value = String(idNumber || "").trim();
+  if (!value) {
+    return { valid: false, reason: "empty", message: "请输入证件号码" };
+  }
+  if (value.length < 18) {
+    return { valid: false, reason: "length_short", message: "请输入18位身份证号" };
+  }
+  if (value.length > 18) {
+    return { valid: false, reason: "length_long", message: "身份证号必须为18位" };
+  }
+
   const idPattern = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/;
-  if (!idPattern.test(value)) return null;
-  if (!isValidIdChecksum(value)) return null;
+  if (!idPattern.test(value)) {
+    return { valid: false, reason: "format", message: "身份证号格式有误，请重新输入" };
+  }
 
   const year = value.slice(6, 10);
   const month = value.slice(10, 12);
@@ -161,9 +182,18 @@ function parseChineseIdCard(idNumber) {
     date.getMonth() + 1 === Number(month) &&
     date.getDate() === Number(day);
 
-  if (!isRealDate) return null;
+  if (!isRealDate) {
+    return { valid: false, reason: "birth_date", message: "身份证号出生日期无效，请重新输入" };
+  }
+
+  if (!isValidIdChecksum(value)) {
+    return { valid: false, reason: "checksum", message: "身份证号校验位错误，请重新输入" };
+  }
 
   return {
+    valid: true,
+    reason: "",
+    message: "",
     birthDate: `${year}-${month}-${day}`,
     gender: Number(value.charAt(16)) % 2 === 1 ? "male" : "female",
   };

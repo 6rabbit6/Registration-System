@@ -176,6 +176,7 @@ const uiState = {
   lookupResults: [],
   lookupSearched: false,
   lastAutoParsedIdNumber: "",
+  lastInvalidIdNumber: "",
   adminLogin: {
     username: "",
     password: "",

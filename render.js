@@ -384,7 +384,7 @@ function paymentRow(label, value) {
 
 function fieldError(field) {
   const message = uiState.validationErrors[field] || formDraft.errors[field] || "";
-  return message ? `<small class="field-error">${escapeHtml(message)}</small>` : "";
+  return `<small class="field-error ${message ? "" : "is-empty"}" data-error-for="${escapeHtml(field)}">${escapeHtml(message)}</small>`;
 }
 
 function fieldErrorClass(field) {

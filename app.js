@@ -547,6 +547,10 @@ function submitFormStep() {
 
   if (!valid) {
     render();
+    if (shouldShowIdCardBlockingModal()) {
+      showIdCardBlockingModal();
+      return;
+    }
     showToast(getFirstValidationErrorMessage() || "请完善报名信息");
     return;
   }
@@ -560,6 +564,10 @@ function submitFormStep() {
 function submitConfirmation() {
   if (!validateDraft({ showErrors: true })) {
     goToPage("form");
+    if (shouldShowIdCardBlockingModal()) {
+      showIdCardBlockingModal();
+      return;
+    }
     showToast(getFirstValidationErrorMessage() || "请先修正报名信息");
     return;
   }
@@ -958,7 +966,7 @@ function updateDraftField(field, value, options = {}) {
   delete uiState.validationErrors[field];
   delete formDraft.errors[field];
 
-  const autoFilledFromId = tryAutoFillFromIdCard(field);
+  const autoFilledFromId = handleIdCardValidationAndAutoFill(field);
 
   if (field === "gender" || field === "birthDate") {
     syncDerivedDraftFields();
@@ -985,20 +993,40 @@ function updateDraftField(field, value, options = {}) {
   if (options.renderAfter || autoFilledFromId) render();
 }
 
-function tryAutoFillFromIdCard(changedField) {
+function handleIdCardValidationAndAutoFill(changedField) {
   if (!["certificateType", "certificateNumber"].includes(changedField)) return false;
   if (formDraft.certificateType !== "id_card") {
     uiState.lastAutoParsedIdNumber = "";
+    uiState.lastInvalidIdNumber = "";
+    clearDraftFieldError("certificateNumber");
     return false;
   }
 
-  const parsed = parseChineseIdCard(formDraft.certificateNumber);
-  if (!parsed) return false;
+  const value = formDraft.certificateNumber.trim();
+  if (!value) {
+    uiState.lastInvalidIdNumber = "";
+    clearDraftFieldError("certificateNumber");
+    return false;
+  }
+
+  const validation = validateChineseIdCard(value);
+  if (!validation.valid) {
+    const message = validation.reason === "empty" ? "" : validation.message;
+    if (message) setDraftFieldError("certificateNumber", message);
+    if (validation.reason === "length_short") uiState.lastInvalidIdNumber = "";
+    if (value.length >= 18 && uiState.lastInvalidIdNumber !== value) {
+      uiState.lastInvalidIdNumber = value;
+      showToast("身份证号格式有误，请重新输入");
+    }
+    return false;
+  }
 
   const previousGender = formDraft.gender;
   const previousBirthDate = formDraft.birthDate;
-  formDraft.birthDate = parsed.birthDate;
-  formDraft.gender = parsed.gender;
+  formDraft.birthDate = validation.birthDate;
+  formDraft.gender = validation.gender;
+  uiState.lastInvalidIdNumber = "";
+  clearDraftFieldError("certificateNumber");
 
   const changedAutoFields = previousGender !== formDraft.gender || previousBirthDate !== formDraft.birthDate;
   if (changedAutoFields) {
@@ -1017,6 +1045,26 @@ function tryAutoFillFromIdCard(changedField) {
   }
 
   return changedAutoFields;
+}
+
+function setDraftFieldError(field, message) {
+  uiState.validationErrors[field] = message;
+  formDraft.errors[field] = message;
+  updateLiveFieldError(field, message);
+}
+
+function clearDraftFieldError(field) {
+  delete uiState.validationErrors[field];
+  delete formDraft.errors[field];
+  updateLiveFieldError(field, "");
+}
+
+function updateLiveFieldError(field, message) {
+  const errorNode = document.querySelector(`[data-error-for="${field}"]`);
+  if (!errorNode) return;
+  errorNode.textContent = message;
+  errorNode.classList.toggle("is-empty", !message);
+  errorNode.closest(".form-row")?.classList.toggle("has-error", Boolean(message));
 }
 
 function toggleEventSelection(eventId, checked) {
@@ -1082,7 +1130,15 @@ function validateDraft(options = {}) {
   const selectedOrganization = enabledOrganizations.find((item) => item.id === formDraft.organizationId);
 
   if (!formDraft.certificateType) errors.certificateType = "请选择证件类型";
-  if (!formDraft.certificateNumber.trim()) errors.certificateNumber = "请输入证件号码";
+  const certificateNumber = formDraft.certificateNumber.trim();
+  if (!certificateNumber) {
+    errors.certificateNumber = "请输入证件号码";
+  } else if (formDraft.certificateType === "id_card") {
+    const idCardValidation = validateChineseIdCard(certificateNumber);
+    if (!idCardValidation.valid) {
+      errors.certificateNumber = "身份证号校验失败，请重新输入后再继续报名";
+    }
+  }
   if (!formDraft.name.trim()) errors.name = "请输入姓名";
   if (!formDraft.gender) errors.gender = "请选择性别";
   if (!formDraft.birthDate || !formDraft.birthYear) errors.birthDate = "请选择出生日期";
@@ -1117,6 +1173,18 @@ function validateDraft(options = {}) {
   }
 
   return Object.keys(errors).length === 0;
+}
+
+function shouldShowIdCardBlockingModal() {
+  return formDraft.certificateType === "id_card" && Boolean((uiState.validationErrors || {}).certificateNumber) && Boolean(formDraft.certificateNumber.trim());
+}
+
+function showIdCardBlockingModal() {
+  openModal({
+    title: "温馨提示",
+    message: "身份证号校验失败，请重新输入后再继续报名",
+    cancelText: "知道了",
+  });
 }
 
 function getFirstValidationErrorMessage() {
@@ -1344,14 +1412,19 @@ function showToast(message) {
 }
 
 function openModal(config) {
+  const hasConfirmAction = Boolean(config.confirmName);
   modalRoot.innerHTML = `
     <div class="modal-mask">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <h2 id="modalTitle">${escapeHtml(config.title)}</h2>
         <p>${escapeHtml(config.message)}</p>
-        <div class="modal-actions">
+        <div class="modal-actions ${hasConfirmAction ? "" : "is-single"}">
           <button type="button" data-action="close-modal">${escapeHtml(config.cancelText || "取消")}</button>
-          <button type="button" data-action="confirm-modal" data-confirm-name="${escapeHtml(config.confirmName)}">${escapeHtml(config.confirmText || "确定")}</button>
+          ${
+            hasConfirmAction
+              ? `<button type="button" data-action="confirm-modal" data-confirm-name="${escapeHtml(config.confirmName)}">${escapeHtml(config.confirmText || "确定")}</button>`
+              : ""
+          }
         </div>
       </div>
     </div>
