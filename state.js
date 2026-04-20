@@ -177,6 +177,7 @@ const uiState = {
   lookupSearched: false,
   lastAutoParsedIdNumber: "",
   lastInvalidIdNumber: "",
+  lastDuplicateCertificateNumber: "",
   adminLogin: {
     username: "",
     password: "",

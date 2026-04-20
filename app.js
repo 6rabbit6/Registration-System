@@ -998,6 +998,7 @@ function handleIdCardValidationAndAutoFill(changedField) {
   if (formDraft.certificateType !== "id_card") {
     uiState.lastAutoParsedIdNumber = "";
     uiState.lastInvalidIdNumber = "";
+    uiState.lastDuplicateCertificateNumber = "";
     clearDraftFieldError("certificateNumber");
     return false;
   }
@@ -1005,6 +1006,7 @@ function handleIdCardValidationAndAutoFill(changedField) {
   const value = formDraft.certificateNumber.trim();
   if (!value) {
     uiState.lastInvalidIdNumber = "";
+    uiState.lastDuplicateCertificateNumber = "";
     clearDraftFieldError("certificateNumber");
     return false;
   }
@@ -1021,12 +1023,24 @@ function handleIdCardValidationAndAutoFill(changedField) {
     return false;
   }
 
+  const duplicate = findDuplicateRegistration(formDraft.eventId || getCurrentEventConfig().id, value);
+  if (duplicate) {
+    const message = getDuplicateRegistrationMessage(duplicate.record.status);
+    setDraftFieldError("certificateNumber", message);
+    if (uiState.lastDuplicateCertificateNumber !== value) {
+      uiState.lastDuplicateCertificateNumber = value;
+      showToast(message);
+    }
+  } else {
+    uiState.lastDuplicateCertificateNumber = "";
+  }
+
   const previousGender = formDraft.gender;
   const previousBirthDate = formDraft.birthDate;
   formDraft.birthDate = validation.birthDate;
   formDraft.gender = validation.gender;
   uiState.lastInvalidIdNumber = "";
-  clearDraftFieldError("certificateNumber");
+  if (!duplicate) clearDraftFieldError("certificateNumber");
 
   const changedAutoFields = previousGender !== formDraft.gender || previousBirthDate !== formDraft.birthDate;
   if (changedAutoFields) {
@@ -1039,7 +1053,7 @@ function handleIdCardValidationAndAutoFill(changedField) {
     clearInvalidGroupAfterEligibilityChange();
   }
 
-  if (uiState.lastAutoParsedIdNumber !== formDraft.certificateNumber) {
+  if (!duplicate && uiState.lastAutoParsedIdNumber !== formDraft.certificateNumber) {
     uiState.lastAutoParsedIdNumber = formDraft.certificateNumber;
     showToast("已根据身份证号自动识别出生日期和性别");
   }
@@ -1131,13 +1145,19 @@ function validateDraft(options = {}) {
 
   if (!formDraft.certificateType) errors.certificateType = "请选择证件类型";
   const certificateNumber = formDraft.certificateNumber.trim();
+  let certificateNumberValid = Boolean(certificateNumber);
   if (!certificateNumber) {
     errors.certificateNumber = "请输入证件号码";
   } else if (formDraft.certificateType === "id_card") {
     const idCardValidation = validateChineseIdCard(certificateNumber);
     if (!idCardValidation.valid) {
       errors.certificateNumber = "身份证号校验失败，请重新输入后再继续报名";
+      certificateNumberValid = false;
     }
+  }
+  if (certificateNumberValid) {
+    const duplicate = findDuplicateRegistration(formDraft.eventId || getCurrentEventConfig().id, certificateNumber);
+    if (duplicate) errors.certificateNumber = getDuplicateRegistrationMessage(duplicate.record.status);
   }
   if (!formDraft.name.trim()) errors.name = "请输入姓名";
   if (!formDraft.gender) errors.gender = "请选择性别";
@@ -1176,7 +1196,9 @@ function validateDraft(options = {}) {
 }
 
 function shouldShowIdCardBlockingModal() {
-  return formDraft.certificateType === "id_card" && Boolean((uiState.validationErrors || {}).certificateNumber) && Boolean(formDraft.certificateNumber.trim());
+  if (formDraft.certificateType !== "id_card" || !formDraft.certificateNumber.trim()) return false;
+  const duplicate = findDuplicateRegistration(formDraft.eventId || getCurrentEventConfig().id, formDraft.certificateNumber);
+  return !duplicate && Boolean((uiState.validationErrors || {}).certificateNumber);
 }
 
 function showIdCardBlockingModal() {
@@ -1185,6 +1207,54 @@ function showIdCardBlockingModal() {
     message: "身份证号校验失败，请重新输入后再继续报名",
     cancelText: "知道了",
   });
+}
+
+function findDuplicateRegistration(eventId, certificateNumber) {
+  const targetEventId = safeText(eventId).trim();
+  const targetCertificateNumber = normalizeCertificateForDuplicate(certificateNumber);
+  if (!targetEventId || !targetCertificateNumber) return null;
+
+  const candidates = [];
+  if (registrationRecord) candidates.push({ record: registrationRecord, order });
+  completedRecords.forEach((entry) => candidates.push(entry));
+
+  return (
+    candidates.find((entry) => {
+      const record = entry?.record || {};
+      const recordEventId = safeText(record.eventId || entry?.order?.eventId).trim();
+      const recordCertificateNumber = normalizeCertificateForDuplicate(record.certificateNumber);
+      if (recordEventId !== targetEventId || recordCertificateNumber !== targetCertificateNumber) return false;
+      if (isCurrentEditablePendingRegistration(record)) return false;
+      return !canCreateNewRegistration(record);
+    }) || null
+  );
+}
+
+function normalizeCertificateForDuplicate(value) {
+  return safeText(value).trim().toUpperCase();
+}
+
+function isCurrentEditablePendingRegistration(record) {
+  return (
+    record?.status === "pending_payment" &&
+    formDraft.registrationNo &&
+    safeText(record.registrationNo) === safeText(formDraft.registrationNo)
+  );
+}
+
+function canCreateNewRegistration(existingRecord) {
+  const status = normalizeReviewStatus(existingRecord?.status);
+  return !["pending_payment", "pending_review", "approved"].includes(status);
+}
+
+function getDuplicateRegistrationMessage(status) {
+  const normalizedStatus = normalizeReviewStatus(status);
+  const messages = {
+    pending_payment: "该证件号已有未完成支付的报名记录，请先完成支付或联系管理员",
+    pending_review: "该证件号已提交报名，当前正在审核中，请勿重复报名",
+    approved: "该证件号已报名成功，无需重复报名",
+  };
+  return messages[normalizedStatus] || "该证件号已有报名记录，请勿重复报名";
 }
 
 function getFirstValidationErrorMessage() {
@@ -1279,6 +1349,9 @@ function resetForNewRegistration() {
   order = createEmptyOrder();
   uiState.validationErrors = {};
   uiState.message = "";
+  uiState.lastAutoParsedIdNumber = "";
+  uiState.lastInvalidIdNumber = "";
+  uiState.lastDuplicateCertificateNumber = "";
   saveState();
 }
 
