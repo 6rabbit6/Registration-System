@@ -61,6 +61,19 @@ function remoteIn(column, values) {
   return `${column}=in.(${values.map((item) => encodeURIComponent(item)).join(",")})`;
 }
 
+function toNullableTimestamp(value) {
+  const text = safeText(value).trim();
+  return text ? text : null;
+}
+
+function sanitizeRemoteRegistrationPayloadTimestamps(payload) {
+  const nextPayload = { ...payload };
+  ["paid_at", "reviewed_at", "submitted_at", "created_at", "updated_at"].forEach((field) => {
+    nextPayload[field] = toNullableTimestamp(nextPayload[field]);
+  });
+  return nextPayload;
+}
+
 async function loadRemoteEvent() {
   const config = getRemoteConfig();
   if (!config.enabled) return null;
@@ -85,7 +98,8 @@ async function loadRemoteOrganizations() {
 
 async function createRemoteRegistration(record, recordOrder) {
   if (!isRemoteEnabled()) return null;
-  const payload = mapRegistrationToDbRow(record, recordOrder);
+  const payload = sanitizeRemoteRegistrationPayloadTimestamps(mapRegistrationToDbRow(record, recordOrder));
+  console.log("createRemoteRegistration payload:", payload);
   const rows = await supabaseRestRequest("registrations", {
     method: "POST",
     body: payload,
@@ -248,12 +262,12 @@ function mapRegistrationToDbRow(record, recordOrder) {
     status: safeText(record?.status || "pending_review"),
     payment_status: safeText(recordOrder?.paymentStatus || "paid"),
     order_no: safeText(recordOrder?.orderNo),
-    paid_at: safeText(recordOrder?.paidAt),
+    paid_at: toNullableTimestamp(recordOrder?.paidAt),
     reject_reason: safeText(record?.rejectReason),
-    reviewed_at: safeText(record?.reviewedAt),
-    submitted_at: safeText(record?.submittedAt || recordOrder?.createdAt),
-    created_at: safeText(record?.submittedAt || recordOrder?.createdAt || nowIso()),
-    updated_at: safeText(record?.updatedAt || nowIso()),
+    reviewed_at: toNullableTimestamp(record?.reviewedAt),
+    submitted_at: toNullableTimestamp(record?.submittedAt || recordOrder?.createdAt),
+    created_at: toNullableTimestamp(record?.submittedAt || recordOrder?.createdAt || nowIso()),
+    updated_at: toNullableTimestamp(record?.updatedAt || nowIso()),
   };
 }
 
@@ -261,7 +275,16 @@ function createRemoteRegistrationPrimaryId(record) {
   const currentId = safeText(record?.id).trim();
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentId)) return currentId;
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-  return currentId || createRegistrationId();
+  return createFallbackUuid();
+}
+
+function createFallbackUuid() {
+  const randomByte = () => Math.floor(Math.random() * 256);
+  const bytes = Array.from({ length: 16 }, () => randomByte());
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.map((byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
 }
 
 function mapDbRegistrationToEntry(row) {
