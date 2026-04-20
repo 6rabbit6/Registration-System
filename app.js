@@ -14,6 +14,7 @@ function init() {
   loadState();
   normalizeDraftAfterConfigChange({ silent: true });
   syncDerivedDraftFields();
+  restorePageFromHistoryState();
   bindEvents();
   render();
 }
@@ -22,6 +23,20 @@ function bindEvents() {
   document.addEventListener("click", handleClick);
   document.addEventListener("input", handleInput);
   document.addEventListener("change", handleChange);
+  window.addEventListener("popstate", handlePopState);
+}
+
+function restorePageFromHistoryState() {
+  const historyPage = getHistoryPage();
+  const targetPage = historyPage || uiState.currentPage || "detail";
+  const guardedPage = preparePageNavigation(targetPage);
+  uiState.currentPage = guardedPage;
+  replaceBrowserHistoryState(guardedPage);
+}
+
+function handlePopState(event) {
+  const page = event.state?.currentPage || "detail";
+  goToPage(page, { fromHistory: true });
 }
 
 function handleClick(eventTarget) {
@@ -206,7 +221,7 @@ function handleClick(eventTarget) {
   if (action === "confirm-modal") {
     const confirmName = actionButton.dataset.confirmName;
     closeModal();
-    if (confirmName === "leave-form") goToPage("detail");
+    if (confirmName === "leave-form") goToPage("detail", { replace: true });
     if (confirmName === "new-registration") {
       resetForNewRegistration();
       goToPage("form");
@@ -685,41 +700,73 @@ function handleBack() {
   }
 
   if (uiState.currentPage === "confirm") {
-    goToPage("form");
+    goToPage("form", { replace: true });
     return;
   }
   if (uiState.currentPage === "payment") {
-    goToPage("confirm");
+    goToPage("confirm", { replace: true });
     return;
   }
   if (uiState.currentPage === "admin_registration_detail") {
-    goToPage("admin_registrations");
+    goToPage("admin_registrations", { replace: true });
     return;
   }
   if (uiState.currentPage === "admin_registrations" || uiState.currentPage === "admin_stats") {
-    goToPage("admin_dashboard");
+    goToPage("admin_dashboard", { replace: true });
     return;
   }
   if (uiState.currentPage === "admin_config") {
-    goToPage("admin_dashboard");
+    goToPage("admin_dashboard", { replace: true });
     return;
   }
   if (uiState.currentPage === "success" || uiState.currentPage === "registration_lookup" || uiState.currentPage === "admin_login" || uiState.currentPage === "admin_dashboard") {
-    goToPage("detail");
+    goToPage("detail", { replace: true });
   }
 }
 
-function goToPage(page) {
-  const guardedPage = requireAdminAuth(page);
-  if (guardedPage !== page) page = guardedPage;
-  if (page === "payment") ensurePendingOrder();
-  if (page === "admin_config") ensureAdminDraft();
+function goToPage(page, options = {}) {
+  const requestedPage = page;
+  page = preparePageNavigation(page);
   if (page !== "admin_registration_detail") uiState.rejectReasonDraft = "";
+  const previousPage = uiState.currentPage;
   uiState.currentPage = page;
   uiState.validationErrors = page === "form" ? uiState.validationErrors : {};
+  if (!options.fromHistory) {
+    const shouldReplace = options.replace || previousPage === page;
+    updateBrowserHistoryState(page, { replace: shouldReplace });
+  } else if (requestedPage !== page) {
+    replaceBrowserHistoryState(page);
+  }
   render();
   saveState();
   scrollAppToTop();
+}
+
+function preparePageNavigation(page) {
+  const guardedPage = requireAdminAuth(page);
+  const nextPage = guardedPage || "detail";
+  if (nextPage === "payment") ensurePendingOrder();
+  if (nextPage === "admin_config") ensureAdminDraft();
+  return nextPage;
+}
+
+function getHistoryPage() {
+  return window.history?.state?.currentPage || "";
+}
+
+function updateBrowserHistoryState(page, options = {}) {
+  const historyApi = window.history;
+  if (!historyApi?.pushState) return;
+  const state = { currentPage: page };
+  if (options.replace) {
+    historyApi.replaceState(state, "", window.location.href);
+    return;
+  }
+  historyApi.pushState(state, "", window.location.href);
+}
+
+function replaceBrowserHistoryState(page) {
+  updateBrowserHistoryState(page, { replace: true });
 }
 
 function updateDraftField(field, value, options = {}) {
