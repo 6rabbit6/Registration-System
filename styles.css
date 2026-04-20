@@ -22,11 +22,12 @@
 html {
   height: 100%;
   background: #dde0e6;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  height: 100%;
-  min-height: 100dvh;
+  min-height: 100svh;
   margin: 0;
   overflow-x: hidden;
   color: var(--ink);
@@ -35,8 +36,28 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+}
+
+input,
+select,
+textarea {
+  min-height: 44px;
+  font-size: 16px;
+  line-height: 1.35;
+  text-align: left;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"] {
+  min-height: auto;
+  -webkit-appearance: auto;
+  appearance: auto;
 }
 
 button {
@@ -47,13 +68,11 @@ button {
 .phone-shell {
   position: relative;
   width: min(100vw, 430px);
-  min-height: 100dvh;
-  height: 100dvh;
+  min-height: 100svh;
   margin: 0 auto;
   padding: 0 0 92px;
   overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow-y: visible;
   background: var(--bg);
 }
 
@@ -230,7 +249,7 @@ button {
 .screen {
   position: relative;
   z-index: 0;
-  min-height: calc(100dvh - 136px);
+  min-height: calc(100svh - 136px);
 }
 
 .detail-page {
@@ -544,7 +563,7 @@ button {
 }
 
 .admin-search-box {
-  height: 40px;
+  min-height: 44px;
   margin-top: 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -558,6 +577,8 @@ button {
   border: 0;
   outline: 0;
   background: transparent;
+  font-size: 16px;
+  line-height: 1.35;
 }
 
 .admin-registration-list {
@@ -700,19 +721,20 @@ button {
 .admin-config-event-row input {
   width: 100%;
   min-width: 0;
-  min-height: 40px;
-  padding: 9px 10px;
+  min-height: 44px;
+  padding: 10px 10px;
   border: 1px solid #e0e4ea;
   border-radius: 4px;
   outline: 0;
   background: #fbfcfe;
   color: #252a31;
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.35;
 }
 
 .admin-config-field textarea {
   resize: vertical;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .admin-config-share-preview {
@@ -1133,12 +1155,15 @@ button {
 .form-row select {
   width: 100%;
   min-width: 0;
-  height: 51px;
+  min-height: 44px;
+  height: 52px;
+  padding: 0;
   border: 0;
   outline: 0;
   background: transparent;
   color: #30343b;
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -1164,18 +1189,18 @@ button {
   appearance: none;
   -webkit-appearance: none;
   padding: 0;
-  line-height: 51px;
+  line-height: 1.35;
   text-align: left;
   text-align-last: left;
 }
 
 .form-row input[type="date"]::-webkit-date-and-time-value {
   display: flex;
-  min-height: 51px;
+  min-height: 52px;
   align-items: center;
   margin: 0;
   padding: 0;
-  line-height: 51px;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -1235,7 +1260,10 @@ button {
 .checkbox-option input {
   width: 19px;
   height: 19px;
+  min-height: 19px;
   margin: 0;
+  -webkit-appearance: auto;
+  appearance: auto;
   accent-color: var(--success);
 }
 
@@ -1382,7 +1410,7 @@ button {
 }
 
 .payment-page {
-  min-height: calc(100dvh - 136px);
+  min-height: calc(100svh - 136px);
   background: #f3f6f8;
 }
 
@@ -1520,7 +1548,7 @@ button {
 }
 
 .lookup-box {
-  height: 44px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #fafafa;
@@ -1533,6 +1561,8 @@ button {
   border: 0;
   outline: 0;
   background: transparent;
+  font-size: 16px;
+  line-height: 1.35;
 }
 
 .lookup-card p {
@@ -1855,6 +1885,8 @@ button {
   .phone-shell {
     min-height: calc(100dvh - 48px);
     height: calc(100dvh - 48px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     border-radius: 18px;
     box-shadow: var(--shadow);
   }
