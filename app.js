@@ -546,7 +546,7 @@ function submitFormStep() {
 
   if (!valid) {
     render();
-    showToast("请完善报名信息");
+    showToast(getFirstValidationErrorMessage() || "请完善报名信息");
     return;
   }
 
@@ -559,7 +559,7 @@ function submitFormStep() {
 function submitConfirmation() {
   if (!validateDraft({ showErrors: true })) {
     goToPage("form");
-    showToast("请先修正报名信息");
+    showToast(getFirstValidationErrorMessage() || "请先修正报名信息");
     return;
   }
   goToPage("payment");
@@ -933,6 +933,10 @@ function updateDraftField(field, value, options = {}) {
 
   if (field === "groupId") {
     formDraft.eventIds = [];
+    delete uiState.validationErrors.groupId;
+    delete formDraft.errors.groupId;
+    delete uiState.validationErrors.eventIds;
+    delete formDraft.errors.eventIds;
   }
 
   if (field === "organizationId") {
@@ -1079,6 +1083,24 @@ function validateDraft(options = {}) {
   }
 
   return Object.keys(errors).length === 0;
+}
+
+function getFirstValidationErrorMessage() {
+  const errorPriority = [
+    "certificateType",
+    "certificateNumber",
+    "name",
+    "gender",
+    "birthDate",
+    "organization",
+    "groupId",
+    "eventIds",
+    "phone",
+    "insuranceFile",
+  ];
+  const errors = uiState.validationErrors || formDraft.errors || {};
+  const firstKey = errorPriority.find((key) => errors[key]) || Object.keys(errors)[0];
+  return firstKey ? errors[firstKey] : "";
 }
 
 function clearInvalidGroupAfterEligibilityChange() {

@@ -260,7 +260,7 @@ function renderOrganizationSelectRow() {
 
 function dateRow(label, name, value) {
   return `
-    <div class="form-row ${fieldErrorClass(name)}">
+    <div class="form-row date-form-row ${fieldErrorClass(name)}">
       <label for="${name}">${label}</label>
       <input id="${name}" name="${name}" type="date" value="${escapeHtml(value)}" data-draft-field />
       <span class="row-arrow">›</span>

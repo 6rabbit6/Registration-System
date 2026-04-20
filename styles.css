@@ -1108,21 +1108,32 @@ button {
 }
 
 .form-row input[type="date"] {
+  display: flex;
+  align-items: center;
   appearance: none;
   -webkit-appearance: none;
   padding: 0;
+  line-height: 51px;
   text-align: left;
   text-align-last: left;
 }
 
 .form-row input[type="date"]::-webkit-date-and-time-value {
+  display: flex;
   min-height: 51px;
+  align-items: center;
   margin: 0;
+  padding: 0;
+  line-height: 51px;
   text-align: left;
 }
 
 .form-row input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
+}
+
+.date-form-row {
+  align-items: center;
 }
 
 .form-row select {
