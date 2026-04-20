@@ -25,6 +25,11 @@ const event = {
     storageKey: "",
     uploadedAt: "",
   },
+  shareCard: {
+    title: "2026年北京市短道速滑联赛第二站",
+    description: "",
+    imageUrl: "",
+  },
   description: [
     "一、主办单位：北京市滑冰协会。",
     "二、承办单位：北京市世纪星滑冰俱乐部。",
@@ -327,6 +332,7 @@ function sanitizeEventConfig(source) {
       url: safeText(source?.commitmentFile?.url || fallback.commitmentFile.url),
     },
     bannerImage: sanitizeBannerImage(source?.bannerImage || fallback.bannerImage),
+    shareCard: sanitizeShareCard(source?.shareCard || fallback.shareCard),
     description: normalizeArray(source?.description?.length ? source.description : fallback.description),
   };
 }

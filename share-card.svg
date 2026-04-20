@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">2026年北京市短道速滑联赛第二站报名通道</title>
+  <desc id="desc">报名中，04.16 到 05.06，点击进入报名通道</desc>
+  <defs>
+    <linearGradient id="ice" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="0.52" stop-color="#eef8fb"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#cf0043"/>
+      <stop offset="1" stop-color="#b9003c"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#ice)"/>
+  <rect width="1200" height="142" fill="url(#brand)"/>
+  <text x="72" y="91" fill="#ffffff" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="42" font-weight="700">赛事报名通道</text>
+  <g opacity="0.16" stroke="#0c93aa" stroke-width="18" stroke-linecap="round">
+    <path d="M760 214c105 0 186 38 254 112"/>
+    <path d="M684 272c139 0 247 52 326 155"/>
+    <path d="M146 497c192-10 371-7 537 8"/>
+  </g>
+  <g transform="translate(72 196)">
+    <rect x="0" y="0" width="186" height="52" rx="8" fill="#ffffff" stroke="#d5dce7"/>
+    <text x="26" y="35" fill="#cf0043" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700">报名中</text>
+  </g>
+  <text x="72" y="340" fill="#20242b" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="58" font-weight="800">2026年北京市短道速滑联赛第二站</text>
+  <text x="72" y="426" fill="#59616e" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="600">04.16 - 05.06 ｜ 点击进入报名通道</text>
+  <rect x="72" y="494" width="288" height="72" rx="36" fill="#cf0043"/>
+  <text x="126" y="542" fill="#ffffff" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="700">立即报名</text>
+</svg>

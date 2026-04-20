@@ -42,6 +42,72 @@ function formatDate(value) {
   return value.replaceAll("-", "年").replace(/年(\d{2})年/, "年$1月") + "日";
 }
 
+function formatMonthDay(value) {
+  const text = safeText(value);
+  const match = text.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return match ? `${match[1]}.${match[2]}` : "";
+}
+
+function sanitizeShareCard(source) {
+  return {
+    title: safeText(source?.title).trim(),
+    description: safeText(source?.description).trim(),
+    imageUrl: safeText(source?.imageUrl).trim(),
+  };
+}
+
+function buildDefaultShareDescription(eventConfig = getCurrentEventConfig()) {
+  const start = formatMonthDay(eventConfig?.registrationStartDate);
+  const end = formatMonthDay(eventConfig?.registrationEndDate);
+  if (start && end) return `报名中｜${start} - ${end}｜点击进入报名通道`;
+  return "报名时间已开放，点击进入赛事报名";
+}
+
+function getDefaultShareImageUrl() {
+  try {
+    if (typeof window === "undefined" || !window.location?.href) return "share-card.svg";
+    return new URL("./share-card.svg", window.location.href).href;
+  } catch {
+    return "share-card.svg";
+  }
+}
+
+function normalizeShareImageUrl(url) {
+  const text = safeText(url).trim();
+  if (!text) return "";
+  if (text.startsWith("data:")) return text;
+  try {
+    if (typeof window === "undefined" || !window.location?.href) return text;
+    return new URL(text, window.location.href).href;
+  } catch {
+    return text;
+  }
+}
+
+function getShareTitle(eventConfig = getCurrentEventConfig()) {
+  const shareCard = sanitizeShareCard(eventConfig?.shareCard);
+  return shareCard.title || safeText(eventConfig?.name || event?.name || "赛事报名系统").trim();
+}
+
+function getShareDescription(eventConfig = getCurrentEventConfig()) {
+  const shareCard = sanitizeShareCard(eventConfig?.shareCard);
+  return shareCard.description || buildDefaultShareDescription(eventConfig);
+}
+
+function getShareImageUrl(eventConfig = getCurrentEventConfig()) {
+  const shareCard = sanitizeShareCard(eventConfig?.shareCard);
+  const banner = normalizeBannerDraft(eventConfig?.bannerImage);
+  return normalizeShareImageUrl(shareCard.imageUrl || banner.url || getDefaultShareImageUrl());
+}
+
+function getShareMetadata(eventConfig = getCurrentEventConfig()) {
+  return {
+    title: getShareTitle(eventConfig),
+    description: getShareDescription(eventConfig),
+    imageUrl: getShareImageUrl(eventConfig),
+  };
+}
+
 function formatCurrency(value) {
   return `¥${Number(value || 0).toFixed(0)}`;
 }

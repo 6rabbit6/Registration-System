@@ -322,6 +322,7 @@ function handleChange(eventTarget) {
 
 function render() {
   headerTitle.textContent = pageTitles[uiState.currentPage] || "赛事报名";
+  updateShareMeta();
   uiState.currentStep = getCurrentStep();
   renderProgress();
   renderMoreMenu();
@@ -763,7 +764,7 @@ function getWheelPickerOptions(type) {
 }
 
 async function handleShareEvent() {
-  const currentEvent = getCurrentEventConfig();
+  const shareMeta = getShareMetadata();
   const pageUrl = getCurrentPageUrl();
 
   if (!pageUrl) {
@@ -774,8 +775,8 @@ async function handleShareEvent() {
   if (typeof navigator !== "undefined" && navigator.share) {
     try {
       await navigator.share({
-        title: currentEvent.name,
-        text: "邀请你查看赛事报名信息",
+        title: shareMeta.title,
+        text: shareMeta.description,
         url: pageUrl,
       });
       return;
@@ -785,6 +786,39 @@ async function handleShareEvent() {
   }
 
   handleCopyEventLink();
+}
+
+function updateShareMeta() {
+  if (typeof document === "undefined") return;
+  const shareMeta = getShareMetadata();
+  const pageUrl = safeText(window.location?.href).startsWith("file:") ? "" : safeText(window.location?.href);
+
+  document.title = `${shareMeta.title}｜赛事报名`;
+  setMetaContent("name", "description", shareMeta.description);
+  setMetaContent("property", "og:title", shareMeta.title);
+  setMetaContent("property", "og:description", shareMeta.description);
+  setMetaContent("property", "og:image", shareMeta.imageUrl);
+  setMetaContent("property", "og:image:width", "1200");
+  setMetaContent("property", "og:image:height", "630");
+  setMetaContent("property", "og:image:alt", shareMeta.title);
+  setMetaContent("property", "og:type", "website");
+  setMetaContent("property", "og:site_name", "赛事报名系统");
+  if (pageUrl) setMetaContent("property", "og:url", pageUrl);
+  setMetaContent("name", "twitter:card", "summary_large_image");
+  setMetaContent("name", "twitter:title", shareMeta.title);
+  setMetaContent("name", "twitter:description", shareMeta.description);
+  setMetaContent("name", "twitter:image", shareMeta.imageUrl);
+}
+
+function setMetaContent(attributeName, attributeValue, content) {
+  if (!attributeName || !attributeValue) return;
+  let element = document.querySelector(`meta[${attributeName}="${attributeValue}"]`);
+  if (!element) {
+    element = document.createElement("meta");
+    element.setAttribute(attributeName, attributeValue);
+    document.head.appendChild(element);
+  }
+  element.setAttribute("content", safeText(content));
 }
 
 async function handleCopyEventLink() {

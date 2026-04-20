@@ -168,6 +168,7 @@ function renderAdminConfigPage() {
     <article class="admin-config-page">
       ${renderEventConfigSection()}
       ${renderBannerConfigSection()}
+      ${renderShareCardConfigSection()}
       ${renderFileConfigSection()}
       ${renderRuleConfigSection()}
       ${renderOrganizationConfigSection()}
@@ -192,6 +193,33 @@ function renderEventConfigSection() {
       ${adminInput("比赛开始日期", "competitionStartDate", current.competitionStartDate, "date", "data-admin-event-field")}
       ${adminInput("比赛结束日期", "competitionEndDate", current.competitionEndDate, "date", "data-admin-event-field")}
       ${adminInput("比赛地点", "location", current.location, "text", "data-admin-event-field")}
+    </section>
+  `;
+}
+
+function renderShareCardConfigSection() {
+  const current = adminDraft.eventConfig || {};
+  const shareCard = sanitizeShareCard(current.shareCard);
+  const preview = getShareMetadata(current);
+  return `
+    <section class="admin-config-section">
+      <h2>分享卡片设置</h2>
+      <p class="admin-config-note">用于微信/聊天中展示报名链接。留空时会自动使用赛事名称、报名时间和默认缩略图。</p>
+      ${adminInput("分享标题", "shareCard.title", shareCard.title, "text", "data-admin-event-field", "placeholder=\"默认使用赛事名称\"")}
+      <label class="admin-config-field admin-config-textarea">
+        <span>分享描述</span>
+        <textarea data-admin-event-field="shareCard.description" rows="3" placeholder="默认生成：报名中｜04.16 - 05.06｜点击进入报名通道">${escapeHtml(shareCard.description)}</textarea>
+      </label>
+      ${adminInput("分享图片地址（可选）", "shareCard.imageUrl", shareCard.imageUrl, "url", "data-admin-event-field", "placeholder=\"可填写适合聊天卡片的图片 URL\"")}
+      <div class="admin-config-share-preview">
+        <div class="admin-config-share-image">
+          <img src="${escapeHtml(preview.imageUrl)}" alt="分享图片预览" onerror="this.parentElement.classList.add('is-error'); this.remove();" />
+        </div>
+        <div>
+          <strong>${escapeHtml(preview.title)}</strong>
+          <p>${escapeHtml(preview.description)}</p>
+        </div>
+      </div>
     </section>
   `;
 }
