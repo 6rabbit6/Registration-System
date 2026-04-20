@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>赛事报名系统</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="phone-shell" aria-label="赛事报名系统">
+      <header class="app-header">
+        <button class="icon-button" type="button" data-action="back" aria-label="返回上一页">
+          <span aria-hidden="true">‹</span>
+        </button>
+        <div class="header-title">
+          <h1 id="headerTitle">活动详情</h1>
+        </div>
+        <button class="icon-button menu-button" type="button" data-action="toggle-more-menu" aria-label="更多操作" aria-expanded="false">
+          <span aria-hidden="true">•••</span>
+        </button>
+      </header>
+
+      <div id="moreMenuRoot"></div>
+
+      <nav class="progress-steps" id="progressSteps" aria-label="报名流程">
+        <div class="progress-step" data-step="1"><span>1</span><strong>填写信息</strong></div>
+        <i aria-hidden="true"></i>
+        <div class="progress-step" data-step="2"><span>2</span><strong>缴费</strong></div>
+        <i aria-hidden="true"></i>
+        <div class="progress-step" data-step="3"><span>3</span><strong>完成</strong></div>
+      </nav>
+
+      <section id="screen" class="screen" aria-live="polite"></section>
+
+      <footer class="bottom-bar" id="bottomBar"></footer>
+    </main>
+
+    <div id="modalRoot"></div>
+    <script src="./helpers.js"></script>
+    <script src="./state.js"></script>
+    <script src="./render.js"></script>
+    <script src="./admin.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
