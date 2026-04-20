@@ -134,6 +134,22 @@ async function searchRemoteRegistrations(query) {
   return Array.isArray(rows) ? rows.map(mapDbRegistrationToEntry) : [];
 }
 
+async function loadRemoteRegistrationDetail(registrationNo) {
+  const config = getRemoteConfig();
+  const normalizedRegistrationNo = safeText(registrationNo).trim().toUpperCase();
+  if (!config.enabled || !normalizedRegistrationNo) return null;
+
+  const query = [
+    "select=*",
+    remoteEq("event_id", config.eventId),
+    remoteEq("registration_no", normalizedRegistrationNo),
+    "limit=1",
+  ].join("&");
+  const rows = await supabaseRestRequest("registrations", { query });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row ? mapDbRegistrationToEntry(row) : null;
+}
+
 async function reviewRemoteRegistration(registrationNo, nextStatus, rejectReason = "") {
   const config = getRemoteConfig();
   if (!config.enabled) return null;
@@ -144,7 +160,7 @@ async function reviewRemoteRegistration(registrationNo, nextStatus, rejectReason
     reject_reason: status === "rejected" ? safeText(rejectReason).trim() : "",
     reviewed_at: nowIso(),
   };
-  const query = [remoteEq("event_id", config.eventId), remoteEq("registration_no", registrationNo)].join("&");
+  const query = [remoteEq("event_id", config.eventId), remoteEq("registration_no", safeText(registrationNo).trim().toUpperCase())].join("&");
   const rows = await supabaseRestRequest("registrations", {
     method: "PATCH",
     query,
@@ -252,7 +268,7 @@ function mapDbRegistrationToEntry(row) {
   const record = {
     id: safeText(row.id),
     eventId: safeText(row.event_id),
-    registrationNo: safeText(row.registration_no),
+    registrationNo: safeText(row.registration_no || row.registrationNo),
     certificateType: safeText(row.certificate_type),
     certificateNumber: safeText(row.certificate_number),
     name: safeText(row.name),
@@ -265,8 +281,8 @@ function mapDbRegistrationToEntry(row) {
     organization: safeText(row.organization || row.team_name),
     groupId: safeText(row.group_id),
     groupName: safeText(row.group_name),
-    eventIds: normalizeArray(row.event_ids),
-    eventNames: normalizeArray(row.event_names),
+    eventIds: normalizeRemoteList(row.event_ids),
+    eventNames: normalizeRemoteList(row.event_names),
     insuranceFile: row.insurance_uploaded
       ? {
           name: "已上传",
@@ -300,6 +316,22 @@ function mapDbRegistrationToEntry(row) {
       paidAt: safeText(row.paid_at),
     },
   };
+}
+
+function normalizeRemoteList(value) {
+  if (Array.isArray(value)) return value.map((item) => safeText(item)).filter(Boolean);
+  const text = safeText(value).trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.map((item) => safeText(item)).filter(Boolean);
+  } catch {
+    // Keep the fallback below for plain comma-separated values.
+  }
+  return text
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function pickRemoteValue(source, ...keys) {

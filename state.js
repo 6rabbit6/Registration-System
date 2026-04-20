@@ -181,6 +181,8 @@ const uiState = {
   lastDuplicateCertificateNumber: "",
   remoteAdminLoaded: false,
   remoteAdminLoading: false,
+  remoteDetailLoading: false,
+  remoteDetailMissRegistrationNo: "",
   adminLogin: {
     username: "",
     password: "",

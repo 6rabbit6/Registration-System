@@ -1035,6 +1035,11 @@ function preparePageNavigation(page) {
 
 async function refreshRemoteDataForPage(page) {
   if (!["admin_registrations", "admin_registration_detail", "admin_stats"].includes(page) || !isAdminLoggedIn()) return;
+  if (page === "admin_registration_detail" && uiState.selectedRegistrationNo && !getSelectedAdminRegistration() && isRemoteEnabled() && !uiState.remoteDetailLoading) {
+    uiState.remoteDetailLoading = true;
+    await loadSelectedRemoteRegistrationDetail(uiState.selectedRegistrationNo);
+    return;
+  }
   await refreshRemoteAdminRegistrations();
 }
 

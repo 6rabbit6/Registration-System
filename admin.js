@@ -89,11 +89,12 @@ function renderAdminRegistrationListItem(entry) {
 function renderAdminRegistrationDetailPage() {
   const selected = getSelectedAdminRegistration();
   if (!selected) {
+    const isLoadingRemoteDetail = uiState.remoteDetailLoading && uiState.selectedRegistrationNo;
     screen.innerHTML = `
       <article class="admin-management-page">
         <section class="admin-management-card">
           <h2>报名详情</h2>
-          <div class="empty-state">未找到报名记录</div>
+          <div class="empty-state">${isLoadingRemoteDetail ? "正在加载报名记录..." : "未找到报名记录"}</div>
         </section>
       </article>
     `;
@@ -638,14 +639,42 @@ function getFilteredAdminRegistrations() {
 
 function getSelectedAdminRegistration() {
   if (!uiState.selectedRegistrationNo) return null;
-  return getAdminRegistrationEntries().find((entry) => entry?.record?.registrationNo === uiState.selectedRegistrationNo) || null;
+  const selectedNo = safeText(uiState.selectedRegistrationNo);
+  return (
+    remoteRegistrations.find((entry) => safeText(entry?.record?.registrationNo) === selectedNo) ||
+    completedRecords.find((entry) => safeText(entry?.record?.registrationNo) === selectedNo) ||
+    null
+  );
 }
 
-function openAdminRegistrationDetail(registrationNo) {
-  uiState.selectedRegistrationNo = safeText(registrationNo);
+async function openAdminRegistrationDetail(registrationNo) {
+  uiState.selectedRegistrationNo = safeText(registrationNo).trim();
   const selected = getSelectedAdminRegistration();
   uiState.rejectReasonDraft = selected?.record?.rejectReason || "";
+  uiState.remoteDetailMissRegistrationNo = "";
+  uiState.remoteDetailLoading = Boolean(!selected && uiState.selectedRegistrationNo && isRemoteEnabled());
   goToPage("admin_registration_detail");
+  if (uiState.remoteDetailLoading) await loadSelectedRemoteRegistrationDetail(uiState.selectedRegistrationNo);
+}
+
+async function loadSelectedRemoteRegistrationDetail(registrationNo) {
+  try {
+    const remoteEntry = await loadRemoteRegistrationDetail(registrationNo);
+    if (remoteEntry) {
+      upsertRemoteRegistrationEntry(remoteEntry);
+      upsertLocalCompletedEntry(remoteEntry);
+      uiState.remoteAdminLoaded = true;
+      uiState.remoteDetailMissRegistrationNo = "";
+      uiState.rejectReasonDraft = remoteEntry.record?.rejectReason || "";
+      return;
+    }
+    uiState.remoteDetailMissRegistrationNo = safeText(registrationNo);
+  } catch (error) {
+    console.warn("loadRemoteRegistrationDetail failed", error);
+  } finally {
+    uiState.remoteDetailLoading = false;
+    render();
+  }
 }
 
 async function approveRegistration(registrationNo) {
