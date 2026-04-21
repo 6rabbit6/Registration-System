@@ -516,6 +516,27 @@ button {
   line-height: 1.55;
 }
 
+.admin-export-filter-box,
+.admin-registration-filter-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--soft-line);
+}
+
+.admin-export-filter-field,
+.admin-registration-filter-field {
+  margin-top: 0;
+}
+
+.admin-export-loading-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .admin-dashboard-card button {
   width: 100%;
   min-height: 42px;
@@ -526,6 +547,12 @@ button {
   font-size: 14px;
   font-weight: 700;
   border: 1px solid rgba(207, 0, 67, 0.18);
+}
+
+.admin-dashboard-card button:disabled {
+  background: #f7f8fb;
+  color: #a5abb5;
+  border-color: var(--line);
 }
 
 .admin-dashboard-card button:last-child {
@@ -586,6 +613,44 @@ button {
   gap: 10px;
 }
 
+.admin-bulk-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--soft-line);
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.admin-bulk-summary {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-bulk-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.admin-bulk-buttons button {
+  min-height: 34px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #fff4f7;
+  color: var(--brand);
+  border: 1px solid rgba(207, 0, 67, 0.18);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-bulk-buttons button:disabled {
+  background: #f7f8fb;
+  color: #a5abb5;
+  border-color: var(--line);
+}
+
 .admin-registration-item-head {
   display: flex;
   align-items: center;
@@ -594,11 +659,35 @@ button {
   margin-bottom: 10px;
 }
 
+.admin-registration-item-head-main {
+  min-width: 0;
+}
+
 .admin-registration-item-head strong {
   font-size: 14px;
 }
 
-.admin-registration-item-head span {
+.admin-registration-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-registration-select input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+  flex: 0 0 auto;
+}
+
+.admin-registration-select span {
+  overflow-wrap: anywhere;
+}
+
+.admin-registration-item-head > span {
   padding: 4px 8px;
   border-radius: 999px;
   background: #f7f8fb;
@@ -618,6 +707,61 @@ button {
   color: var(--brand);
   font-size: 13px;
   font-weight: 700;
+  border: 1px solid rgba(207, 0, 67, 0.18);
+}
+
+.admin-quick-review-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--soft-line);
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.admin-quick-review-box label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-quick-review-textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: 0;
+  resize: vertical;
+  background: #fff;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.admin-quick-review-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-quick-review-actions button {
+  min-height: 34px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-quick-review-actions button:first-child {
+  background: #eefaf1;
+  color: #17833d;
+  border: 1px solid rgba(23, 131, 61, 0.18);
+}
+
+.admin-quick-review-actions button:last-child {
+  background: #fff4f7;
+  color: var(--brand);
   border: 1px solid rgba(207, 0, 67, 0.18);
 }
 

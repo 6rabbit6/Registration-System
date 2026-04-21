@@ -98,7 +98,7 @@ function handlePopState(event) {
   goToPage(page, { fromHistory: true });
 }
 
-function handleClick(eventTarget) {
+async function handleClick(eventTarget) {
   if (eventTarget.target.closest(".wheel-picker-panel") && !eventTarget.target.closest("[data-action]")) {
     return;
   }
@@ -160,7 +160,14 @@ function handleClick(eventTarget) {
   }
   if (action === "menu-export-approved") {
     if (isAdminLoggedIn()) {
+      if (!guardAdminExportDataReady()) return;
       exportApprovedRegistrationsJson();
+    }
+  }
+  if (action === "menu-export-approved-excel") {
+    if (isAdminLoggedIn()) {
+      if (!guardAdminExportDataReady()) return;
+      exportApprovedRegistrationsExcel();
     }
   }
   if (action === "back") {
@@ -210,6 +217,22 @@ function handleClick(eventTarget) {
   if (action === "admin-reject-registration") {
     rejectRegistration(uiState.selectedRegistrationNo, uiState.rejectReasonDraft);
   }
+  if (action === "admin-quick-approve-registration") {
+    approveRegistration(actionButton.dataset.registrationNo);
+  }
+  if (action === "admin-quick-reject-registration") {
+    handleAdminQuickReject(actionButton.dataset.registrationNo);
+  }
+  if (action === "admin-bulk-select-all") {
+    selectAllAdminRegistrations(getFilteredAdminRegistrations());
+  }
+  if (action === "admin-bulk-clear-selection") {
+    clearAdminBulkSelectedRegistrations();
+    render();
+  }
+  if (action === "admin-bulk-approve") {
+    openAdminBulkApproveConfirm(getFilteredAdminRegistrations());
+  }
   if (action === "admin-back-dashboard") {
     goToPage("admin_dashboard");
   }
@@ -225,7 +248,17 @@ function handleClick(eventTarget) {
       showToast("请先登录后台");
       return;
     }
+    if (!guardAdminExportDataReady()) return;
     exportApprovedRegistrationsJson();
+  }
+  if (action === "export-approved-excel") {
+    if (uiState.currentPage !== "admin_dashboard" || !isAdminLoggedIn()) {
+      goToPage("admin_login");
+      showToast("请先登录后台");
+      return;
+    }
+    if (!guardAdminExportDataReady()) return;
+    exportApprovedRegistrationsExcel();
   }
   if (action === "save-admin-config") {
     saveAdminConfigDraft();
@@ -281,6 +314,9 @@ function handleClick(eventTarget) {
   if (action === "pay") {
     payMockOrder();
   }
+  if (action === "retry-remote-save") {
+    retryRemoteRegistrationSave();
+  }
   if (action === "search-lookup") {
     searchRegistration();
   }
@@ -305,6 +341,9 @@ function handleClick(eventTarget) {
       resetForNewRegistration();
       goToPage("form");
     }
+    if (confirmName === "admin-bulk-approve") {
+      await handleAdminBulkApprove(getFilteredAdminRegistrations());
+    }
   }
 }
 
@@ -328,6 +367,11 @@ function handleInput(eventTarget) {
 
   if (input.name === "rejectReasonDraft") {
     uiState.rejectReasonDraft = input.value;
+    return;
+  }
+
+  if (input.name === "adminQuickRejectReason") {
+    setAdminQuickRejectReason(input.dataset.registrationNo, input.value);
     return;
   }
 
@@ -361,6 +405,24 @@ function handleChange(eventTarget) {
 
   if (input.name === "eventIds") {
     toggleEventSelection(input.value, input.checked);
+    return;
+  }
+
+  if (input.name === "adminExportGroupFilter" || input.name === "adminExportEventFilter") {
+    uiState[input.name] = input.value || "all";
+    render();
+    return;
+  }
+
+  if (input.name === "adminRegistrationGroupFilter" || input.name === "adminRegistrationEventFilter") {
+    uiState[input.name] = input.value || "all";
+    render();
+    return;
+  }
+
+  if (input.name === "adminBulkRegistrationSelect") {
+    toggleAdminRegistrationSelected(input.dataset.registrationNo, input.checked);
+    render();
     return;
   }
 
@@ -433,6 +495,7 @@ function renderMoreMenu() {
       <button type="button" role="menuitem" data-action="menu-go-admin">后台管理</button>
       <button type="button" role="menuitem" data-action="menu-go-admin-config">后台配置</button>
       <button type="button" role="menuitem" data-action="menu-export-approved">导出正式名单 JSON</button>
+      <button type="button" role="menuitem" data-action="menu-export-approved-excel">导出正式名单 Excel</button>
     `
     : `<button type="button" role="menuitem" data-action="admin-entry">后台登录</button>`;
 
@@ -526,9 +589,12 @@ function renderBottomBar() {
 
   if (uiState.currentPage === "payment") {
     bottomBar.classList.add("has-secondary");
+    const remoteSaveFailed = order.paymentStatus === "paid" && uiState.remoteSaveStatus === "failed";
     bottomBar.innerHTML = `
-      <button class="secondary-button" type="button" data-action="edit">返回修改</button>
-      <button class="wechat-button" type="button" data-action="pay" ${uiState.isPaying ? "disabled" : ""}>${uiState.isPaying ? "支付处理中..." : "模拟微信支付"}</button>
+      <button class="secondary-button" type="button" data-action="${remoteSaveFailed ? "home" : "edit"}">${remoteSaveFailed ? "返回详情" : "返回修改"}</button>
+      <button class="wechat-button" type="button" data-action="${remoteSaveFailed ? "retry-remote-save" : "pay"}" ${uiState.isPaying ? "disabled" : ""}>${
+        uiState.isPaying ? "保存中..." : remoteSaveFailed ? "重试保存" : "模拟微信支付"
+      }</button>
     `;
     return;
   }
@@ -583,7 +649,7 @@ function renderBottomBar() {
     bottomBar.innerHTML = canReview
       ? `
         <button class="secondary-button" type="button" data-action="admin-back-registrations">返回列表</button>
-        <button class="secondary-button danger-button" type="button" data-action="admin-reject-registration">驳回</button>
+        <button class="secondary-button danger-button" type="button" data-action="admin-reject-registration">审核驳回</button>
         <button class="primary-button" type="button" data-action="admin-approve-registration">审核通过</button>
       `
       : `<button class="secondary-button" type="button" data-action="admin-back-registrations">返回列表</button>`;
@@ -657,6 +723,9 @@ function ensurePendingOrder() {
     updatePendingRegistrationSnapshot();
     return;
   }
+  if (order.id && order.paymentStatus === "paid" && registrationRecord && ["failed", "saving"].includes(uiState.remoteSaveStatus)) {
+    return;
+  }
   createPendingRegistrationAndOrder();
 }
 
@@ -695,6 +764,7 @@ function createPendingRegistrationAndOrder() {
   formDraft.registrationNo = registrationNo;
   formDraft.status = "pending_payment";
   formDraft.updatedAt = createdAt;
+  uiState.remoteSaveStatus = "idle";
   saveState();
 }
 
@@ -720,6 +790,7 @@ function payMockOrder() {
   ensurePendingOrder();
 
   uiState.isPaying = true;
+  uiState.remoteSaveStatus = "saving";
   renderBottomBar();
 
   window.setTimeout(async () => {
@@ -733,22 +804,63 @@ function payMockOrder() {
     formDraft.status = "pending_review";
     formDraft.updatedAt = paidAt;
 
-    saveCompletedRegistration();
-    await saveRemoteRegistrationAfterPayment();
-    uiState.isPaying = false;
     saveState();
-    goToPage("success");
+    const remoteSaved = await saveRemoteRegistrationAfterPayment();
+    uiState.isPaying = false;
+    if (remoteSaved) {
+      uiState.remoteSaveStatus = "saved";
+      saveCompletedRegistration();
+      saveState();
+      goToPage("success");
+      return;
+    }
+
+    uiState.remoteSaveStatus = "failed";
+    saveState();
+    render();
+    showToast("报名支付成功，但远程保存失败，请重试");
   }, 700);
 }
 
 async function saveRemoteRegistrationAfterPayment() {
+  if (!isRemoteEnabled()) return true;
   try {
     const remoteEntry = await createRemoteRegistration(registrationRecord, order);
-    if (remoteEntry) upsertRemoteRegistrationEntry(remoteEntry);
+    if (remoteEntry) {
+      upsertRemoteRegistrationEntry(remoteEntry);
+      return true;
+    }
   } catch (error) {
     console.warn("createRemoteRegistration failed", error);
-    showToast("远程保存失败，已保留本地报名记录");
   }
+  return false;
+}
+
+async function retryRemoteRegistrationSave() {
+  if (uiState.isPaying) return;
+  if (!registrationRecord || order.paymentStatus !== "paid") {
+    showToast("暂无可重试保存的报名记录");
+    return;
+  }
+
+  uiState.isPaying = true;
+  uiState.remoteSaveStatus = "saving";
+  render();
+
+  const remoteSaved = await saveRemoteRegistrationAfterPayment();
+  uiState.isPaying = false;
+  if (remoteSaved) {
+    uiState.remoteSaveStatus = "saved";
+    saveCompletedRegistration();
+    saveState();
+    goToPage("success");
+    return;
+  }
+
+  uiState.remoteSaveStatus = "failed";
+  saveState();
+  render();
+  showToast("远程保存失败，请稍后重试");
 }
 
 async function searchRegistration() {
@@ -1034,7 +1146,7 @@ function preparePageNavigation(page) {
 }
 
 async function refreshRemoteDataForPage(page) {
-  if (!["admin_registrations", "admin_registration_detail", "admin_stats"].includes(page) || !isAdminLoggedIn()) return;
+  if (!["admin_dashboard", "admin_registrations", "admin_registration_detail", "admin_stats"].includes(page) || !isAdminLoggedIn()) return;
   if (page === "admin_registration_detail" && uiState.selectedRegistrationNo && !getSelectedAdminRegistration() && isRemoteEnabled() && !uiState.remoteDetailLoading) {
     uiState.remoteDetailLoading = true;
     await loadSelectedRemoteRegistrationDetail(uiState.selectedRegistrationNo);
@@ -1046,6 +1158,7 @@ async function refreshRemoteDataForPage(page) {
 async function refreshRemoteAdminRegistrations() {
   if (!isRemoteEnabled() || uiState.remoteAdminLoading) return;
   uiState.remoteAdminLoading = true;
+  render();
   try {
     const rows = await searchRemoteRegistrations("");
     if (Array.isArray(rows)) {
@@ -1057,6 +1170,7 @@ async function refreshRemoteAdminRegistrations() {
     console.warn("refreshRemoteAdminRegistrations failed", error);
   } finally {
     uiState.remoteAdminLoading = false;
+    render();
   }
 }
 
@@ -1505,6 +1619,7 @@ function resetForNewRegistration() {
   order = createEmptyOrder();
   uiState.validationErrors = {};
   uiState.message = "";
+  uiState.remoteSaveStatus = "idle";
   uiState.lastAutoParsedIdNumber = "";
   uiState.lastInvalidIdNumber = "";
   uiState.lastDuplicateCertificateNumber = "";

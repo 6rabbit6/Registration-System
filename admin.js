@@ -20,23 +20,47 @@ function renderAdminLoginPage() {
 }
 
 function renderAdminDashboardPage() {
+  const exportOptions = getApprovedRegistrationExportFilterOptions();
+  normalizeAdminExportFilters(exportOptions);
+  const exportDisabled = !isAdminExportDataReady();
   screen.innerHTML = `
     <article class="admin-dashboard-page">
       <section class="admin-dashboard-card">
         <h2>后台管理</h2>
-        <p>本地管理员入口，可审核报名、查看统计、配置规则和导出正式名单。</p>
+        <p>本地管理员入口，可进行报名审核、统计查看、规则配置和正式名单导出。</p>
         <button type="button" data-action="admin-go-registrations">报名审核</button>
         <button type="button" data-action="admin-go-stats">报名统计</button>
         <button type="button" data-action="admin-go-config">后台配置</button>
-        <button type="button" data-action="export-approved">导出正式名单 JSON</button>
+        <button type="button" data-action="export-approved" ${exportDisabled ? "disabled" : ""}>导出正式名单 JSON</button>
+        <div class="admin-export-filter-box">
+          ${renderAdminExportFilterSelect("组别筛选", "adminExportGroupFilter", exportOptions.groups, uiState.adminExportGroupFilter, "全部组别", exportDisabled)}
+          ${renderAdminExportFilterSelect("项目筛选", "adminExportEventFilter", exportOptions.events, uiState.adminExportEventFilter, "全部项目", exportDisabled)}
+        </div>
+        ${exportDisabled ? `<p class="admin-export-loading-note">正在加载报名数据，请稍后导出</p>` : ""}
+        <button type="button" data-action="export-approved-excel" ${exportDisabled ? "disabled" : ""}>导出正式名单 Excel</button>
         <button type="button" data-action="admin-logout">退出登录</button>
       </section>
     </article>
   `;
 }
 
+function renderAdminExportFilterSelect(label, name, options, selectedValue, allLabel, disabled = false) {
+  return `
+    <label class="admin-config-field admin-export-filter-field">
+      <span>${escapeHtml(label)}</span>
+      <select name="${escapeHtml(name)}" ${disabled ? "disabled" : ""}>
+        <option value="all" ${selectedValue === "all" ? "selected" : ""}>${escapeHtml(allLabel)}</option>
+        ${options.map((option) => `<option value="${escapeHtml(option)}" ${selectedValue === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
 function renderAdminRegistrationsPage() {
+  const filterOptions = getAdminRegistrationFilterOptions();
+  normalizeAdminRegistrationFilters(filterOptions);
   const records = getFilteredAdminRegistrations();
+  normalizeAdminBulkSelectedRegistrations(records);
   screen.innerHTML = `
     <article class="admin-management-page">
       <section class="admin-management-card">
@@ -50,6 +74,11 @@ function renderAdminRegistrationsPage() {
         <div class="admin-search-box">
           <input type="search" name="adminRegistrationSearch" value="${escapeHtml(uiState.adminRegistrationSearch)}" placeholder="姓名 / 手机号 / 证件号 / 报名编号" />
         </div>
+        <div class="admin-registration-filter-box">
+          ${renderAdminRegistrationFilterSelect("组别筛选", "adminRegistrationGroupFilter", filterOptions.groups, uiState.adminRegistrationGroupFilter, "全部组别")}
+          ${renderAdminRegistrationFilterSelect("项目筛选", "adminRegistrationEventFilter", filterOptions.events, uiState.adminRegistrationEventFilter, "全部项目")}
+        </div>
+        ${renderAdminBulkActions(records)}
       </section>
       <section class="admin-registration-list">
         ${
@@ -62,15 +91,54 @@ function renderAdminRegistrationsPage() {
   `;
 }
 
+function renderAdminRegistrationFilterSelect(label, name, options, selectedValue, allLabel) {
+  return `
+    <label class="admin-config-field admin-registration-filter-field">
+      <span>${escapeHtml(label)}</span>
+      <select name="${escapeHtml(name)}">
+        <option value="all" ${selectedValue === "all" ? "selected" : ""}>${escapeHtml(allLabel)}</option>
+        ${options.map((option) => `<option value="${escapeHtml(option)}" ${selectedValue === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function renderAdminBulkActions(records) {
+  const selectedCount = uiState.adminBulkSelectedRegistrationNos.length;
+  const selectableCount = getSelectableAdminRegistrationNos(records).length;
+  const isApproving = uiState.adminBulkApproving;
+  return `
+    <div class="admin-bulk-actions">
+      <div class="admin-bulk-summary">已选 ${selectedCount} 条，当前可选 ${selectableCount} 条</div>
+      <div class="admin-bulk-buttons">
+        <button type="button" data-action="admin-bulk-select-all" ${selectableCount && !isApproving ? "" : "disabled"}>全选当前页待审核</button>
+        <button type="button" data-action="admin-bulk-clear-selection" ${selectedCount && !isApproving ? "" : "disabled"}>清空选择</button>
+        <button type="button" data-action="admin-bulk-approve" ${selectedCount && !isApproving ? "" : "disabled"}>${isApproving ? "批量通过中..." : `批量通过（${selectedCount}）`}</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderAdminRegistrationListItem(entry) {
   const record = entry.record || {};
   const recordOrder = entry.order || {};
   const canReview = record.status === "pending_review";
+  const selectable = isAdminRegistrationSelectable(entry);
+  const selected = isAdminRegistrationSelected(record.registrationNo);
   const paymentAmount = getAdminPaymentAmount(record, recordOrder);
   return `
     <div class="admin-registration-item">
       <div class="admin-registration-item-head">
-        <strong>${escapeHtml(record.registrationNo || "暂无报名编号")}</strong>
+        <div class="admin-registration-item-head-main">
+          ${
+            selectable
+              ? `<label class="admin-registration-select">
+                  <input type="checkbox" name="adminBulkRegistrationSelect" data-registration-no="${escapeHtml(record.registrationNo)}" ${selected ? "checked" : ""} ${uiState.adminBulkApproving ? "disabled" : ""} />
+                  <span>${escapeHtml(record.registrationNo || "暂无报名编号")}</span>
+                </label>`
+              : `<strong>${escapeHtml(record.registrationNo || "暂无报名编号")}</strong>`
+          }
+        </div>
         <span>${escapeHtml(statusLabel(record.status))}</span>
       </div>
       ${plainRow("姓名", record.name)}
@@ -79,8 +147,25 @@ function renderAdminRegistrationListItem(entry) {
       ${plainRow("项目", normalizeArray(record.eventNames).join("、"))}
       ${plainRow("支付信息", `${paymentStatusLabel(recordOrder.paymentStatus)}｜${formatCurrency(paymentAmount)}`)}
       ${plainRow("审核状态", statusLabel(record.status))}
+      ${canReview ? renderAdminQuickReviewBox(record) : ""}
       <div class="admin-registration-actions">
         <button type="button" data-action="admin-view-registration" data-registration-no="${escapeHtml(record.registrationNo)}">${canReview ? "查看/审核" : "查看详情"}</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminQuickReviewBox(record) {
+  const registrationNo = safeText(record.registrationNo);
+  return `
+    <div class="admin-quick-review-box">
+      <label>
+        <span>快捷驳回原因</span>
+        <textarea class="admin-quick-review-textarea" name="adminQuickRejectReason" data-registration-no="${escapeHtml(registrationNo)}" rows="2" placeholder="请输入驳回原因，至少 2 个字">${escapeHtml(getAdminQuickRejectReason(registrationNo))}</textarea>
+      </label>
+      <div class="admin-quick-review-actions">
+        <button type="button" data-action="admin-quick-approve-registration" data-registration-no="${escapeHtml(registrationNo)}">通过</button>
+        <button type="button" data-action="admin-quick-reject-registration" data-registration-no="${escapeHtml(registrationNo)}">驳回</button>
       </div>
     </div>
   `;
@@ -136,10 +221,10 @@ function renderAdminRegistrationDetailPage() {
           ? `<section class="admin-management-card">
               <label class="admin-config-field">
                 <span>驳回原因</span>
-                <textarea name="rejectReasonDraft" rows="3" placeholder="驳回时必填，至少 2 个字">${escapeHtml(uiState.rejectReasonDraft)}</textarea>
+                <textarea name="rejectReasonDraft" rows="3" placeholder="请输入驳回原因，至少 2 个字">${escapeHtml(uiState.rejectReasonDraft)}</textarea>
               </label>
             </section>`
-          : `<section class="admin-management-card"><p class="admin-status-note">${escapeHtml(record.status === "approved" ? "该报名已审核通过，不支持反向操作。" : "该报名已驳回，不支持恢复操作。")}</p></section>`
+          : `<section class="admin-management-card"><p class="admin-status-note">${escapeHtml(record.status === "approved" ? "该报名已审核通过，不支持反向操作。" : "该报名已审核驳回，不支持恢复操作。")}</p></section>`
       }
     </article>
   `;
@@ -622,9 +707,22 @@ function getAdminRegistrationEntries() {
   return uiState.remoteAdminLoaded ? remoteRegistrations : getPaidCompletedRecords();
 }
 
+function isAdminExportDataReady() {
+  return !isRemoteEnabled() || (uiState.remoteAdminLoaded && !uiState.remoteAdminLoading);
+}
+
+function guardAdminExportDataReady() {
+  if (isAdminExportDataReady()) return true;
+  showToast("正在加载报名数据，请稍后导出");
+  return false;
+}
+
 function getFilteredAdminRegistrations() {
   const filter = uiState.adminRegistrationFilter;
   const query = uiState.adminRegistrationSearch.trim();
+  const groupFilter = uiState.adminRegistrationGroupFilter || "all";
+  const eventFilter = uiState.adminRegistrationEventFilter || "all";
+
   return getAdminRegistrationEntries().filter(({ record }) => {
     if (!record) return false;
     const statusMatch = filter === "all" || record.status === filter;
@@ -633,18 +731,174 @@ function getFilteredAdminRegistrations() {
       [record.name, record.phone, record.certificateNumber, record.registrationNo]
         .filter(Boolean)
         .some((value) => String(value).includes(query));
-    return statusMatch && queryMatch;
+    const groupMatch = groupFilter === "all" || record.groupName === groupFilter;
+    const eventMatch = eventFilter === "all" || normalizeArray(record.eventNames).includes(eventFilter);
+    return statusMatch && queryMatch && groupMatch && eventMatch;
   });
+}
+
+function getAdminRegistrationFilterOptions() {
+  const registrations = getAdminRegistrationEntries();
+  // 当前先采用通用中文排序；后续如需 U18、U15、公开组等固定业务顺序，可扩展自定义排序规则。
+  const groups = Array.from(new Set(registrations.map((entry) => safeText(entry?.record?.groupName)).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-CN"));
+  const events = Array.from(
+    new Set(
+      registrations
+        .flatMap((entry) => normalizeArray(entry?.record?.eventNames))
+        .map((item) => safeText(item))
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "zh-CN"));
+
+  return { groups, events };
+}
+
+function normalizeAdminRegistrationFilters(options = getAdminRegistrationFilterOptions()) {
+  if (uiState.adminRegistrationGroupFilter !== "all" && !options.groups.includes(uiState.adminRegistrationGroupFilter)) {
+    uiState.adminRegistrationGroupFilter = "all";
+  }
+  if (uiState.adminRegistrationEventFilter !== "all" && !options.events.includes(uiState.adminRegistrationEventFilter)) {
+    uiState.adminRegistrationEventFilter = "all";
+  }
+}
+
+function getAdminRegistrationByNo(registrationNo) {
+  const targetNo = safeText(registrationNo).trim();
+  if (!targetNo) return null;
+  return (
+    remoteRegistrations.find((entry) => safeText(entry?.record?.registrationNo) === targetNo) ||
+    completedRecords.find((entry) => safeText(entry?.record?.registrationNo) === targetNo) ||
+    null
+  );
+}
+
+function isAdminRegistrationSelectable(entry) {
+  return Boolean(entry?.record?.registrationNo && entry.record.status === "pending_review");
+}
+
+function isAdminRegistrationSelected(registrationNo) {
+  const targetNo = safeText(registrationNo).trim();
+  return Boolean(targetNo && normalizeArray(uiState.adminBulkSelectedRegistrationNos).includes(targetNo));
+}
+
+function toggleAdminRegistrationSelected(registrationNo, checked) {
+  const targetNo = safeText(registrationNo).trim();
+  if (!targetNo) return;
+  const selectedSet = new Set(normalizeArray(uiState.adminBulkSelectedRegistrationNos));
+  const entry = getAdminRegistrationByNo(targetNo);
+  if (checked && isAdminRegistrationSelectable(entry)) {
+    selectedSet.add(targetNo);
+  } else {
+    selectedSet.delete(targetNo);
+  }
+  uiState.adminBulkSelectedRegistrationNos = Array.from(selectedSet);
+}
+
+function getSelectableAdminRegistrationNos(records) {
+  return Array.from(new Set((records || []).filter(isAdminRegistrationSelectable).map((entry) => safeText(entry.record.registrationNo)).filter(Boolean)));
+}
+
+// 当前全选仅针对当前过滤后的列表，避免跨范围误操作；后续如需跨页批量操作，可单独扩展。
+function selectAllAdminRegistrations(records = getFilteredAdminRegistrations()) {
+  const selectedSet = new Set(normalizeArray(uiState.adminBulkSelectedRegistrationNos));
+  getSelectableAdminRegistrationNos(records).forEach((registrationNo) => selectedSet.add(registrationNo));
+  uiState.adminBulkSelectedRegistrationNos = Array.from(selectedSet);
+  render();
+}
+
+function clearAdminBulkSelectedRegistrations() {
+  uiState.adminBulkSelectedRegistrationNos = [];
+}
+
+function normalizeAdminBulkSelectedRegistrations(records = getFilteredAdminRegistrations()) {
+  const selectableSet = new Set(getSelectableAdminRegistrationNos(records));
+  uiState.adminBulkSelectedRegistrationNos = normalizeArray(uiState.adminBulkSelectedRegistrationNos).filter((registrationNo) => selectableSet.has(registrationNo));
 }
 
 function getSelectedAdminRegistration() {
   if (!uiState.selectedRegistrationNo) return null;
-  const selectedNo = safeText(uiState.selectedRegistrationNo);
-  return (
-    remoteRegistrations.find((entry) => safeText(entry?.record?.registrationNo) === selectedNo) ||
-    completedRecords.find((entry) => safeText(entry?.record?.registrationNo) === selectedNo) ||
-    null
-  );
+  return getAdminRegistrationByNo(uiState.selectedRegistrationNo);
+}
+
+function getAdminQuickRejectReason(registrationNo) {
+  const targetNo = safeText(registrationNo).trim();
+  return targetNo ? safeText(uiState.adminQuickRejectReasonDrafts?.[targetNo]) : "";
+}
+
+function setAdminQuickRejectReason(registrationNo, value) {
+  const targetNo = safeText(registrationNo).trim();
+  if (!targetNo) return;
+  uiState.adminQuickRejectReasonDrafts = uiState.adminQuickRejectReasonDrafts || {};
+  uiState.adminQuickRejectReasonDrafts[targetNo] = value;
+}
+
+function clearAdminQuickRejectReason(registrationNo) {
+  const targetNo = safeText(registrationNo).trim();
+  if (!targetNo || !uiState.adminQuickRejectReasonDrafts) return;
+  delete uiState.adminQuickRejectReasonDrafts[targetNo];
+}
+
+function handleAdminQuickReject(registrationNo) {
+  const targetNo = safeText(registrationNo).trim();
+  const rejectReason = getAdminQuickRejectReason(targetNo).trim();
+  if (rejectReason.length < 2) {
+    showToast("请填写至少 2 个字的驳回原因");
+    return;
+  }
+  rejectRegistration(targetNo, rejectReason);
+}
+
+function openAdminBulkApproveConfirm(records = getFilteredAdminRegistrations()) {
+  normalizeAdminBulkSelectedRegistrations(records);
+  const selectedCount = normalizeArray(uiState.adminBulkSelectedRegistrationNos).length;
+  if (!selectedCount) {
+    showToast("请先选择待审核报名记录");
+    return;
+  }
+  openModal({
+    title: "批量通过确认",
+    message: `确认批量通过 ${selectedCount} 条待审核报名？`,
+    confirmText: "确认通过",
+    cancelText: "取消",
+    confirmName: "admin-bulk-approve",
+  });
+}
+
+async function handleAdminBulkApprove(records = getFilteredAdminRegistrations()) {
+  if (uiState.adminBulkApproving) return;
+  normalizeAdminBulkSelectedRegistrations(records);
+  const selectedNos = normalizeArray(uiState.adminBulkSelectedRegistrationNos);
+  if (!selectedNos.length) {
+    showToast("请先选择待审核报名记录");
+    return;
+  }
+
+  uiState.adminBulkApproving = true;
+  render();
+  let successCount = 0;
+  let failedCount = 0;
+
+  try {
+    for (const registrationNo of selectedNos) {
+      try {
+        const approved = await approveRegistration(registrationNo, { silent: true, renderAfter: false });
+        if (approved) {
+          successCount += 1;
+        } else {
+          failedCount += 1;
+        }
+      } catch (error) {
+        console.warn("bulk approve registration failed", registrationNo, error);
+        failedCount += 1;
+      }
+    }
+  } finally {
+    uiState.adminBulkApproving = false;
+    clearAdminBulkSelectedRegistrations();
+    render();
+  }
+
+  showToast(failedCount ? `已批量通过 ${successCount} 条，失败 ${failedCount} 条` : `已批量通过 ${successCount} 条`);
 }
 
 async function openAdminRegistrationDetail(registrationNo) {
@@ -677,43 +931,58 @@ async function loadSelectedRemoteRegistrationDetail(registrationNo) {
   }
 }
 
-async function approveRegistration(registrationNo) {
-  const entry = getSelectedAdminRegistration();
+async function approveRegistration(registrationNo, options = {}) {
+  const shouldToast = !options.silent;
+  const shouldRender = options.renderAfter !== false;
+  const targetNo = safeText(registrationNo || uiState.selectedRegistrationNo).trim();
+  const entry = getAdminRegistrationByNo(targetNo);
   if (!entry || entry.record.status !== "pending_review" || entry.order?.paymentStatus !== "paid") {
-    showToast("当前报名不可审核");
-    return;
+    if (shouldToast) showToast("当前报名不可审核");
+    return false;
   }
 
   const reviewedAt = nowIso();
   try {
-    const remoteEntry = await reviewRemoteRegistration(registrationNo, "approved", "");
+    const remoteEntry = await reviewRemoteRegistration(targetNo, "approved", "");
     if (remoteEntry) {
       upsertRemoteRegistrationEntry(remoteEntry);
       upsertLocalCompletedEntry(remoteEntry);
       syncReviewedRecordToActiveState(remoteEntry.record);
+      clearAdminQuickRejectReason(targetNo);
       saveState();
-      showToast("已审核通过");
-      render();
-      return;
+      if (shouldToast) showToast("已审核通过");
+      if (shouldRender) render();
+      return true;
+    }
+    if (isRemoteEnabled()) {
+      if (shouldToast) showToast("当前报名不可审核");
+      return false;
     }
   } catch (error) {
     console.warn("reviewRemoteRegistration approved failed", error);
+    if (isRemoteEnabled()) {
+      if (shouldToast) showToast("当前报名不可审核");
+      return false;
+    }
   }
 
   entry.record.status = "approved";
   entry.record.reviewedAt = reviewedAt;
   entry.record.rejectReason = "";
   syncReviewedRecordToActiveState(entry.record);
+  clearAdminQuickRejectReason(targetNo);
   saveState();
-  showToast("已审核通过");
-  render();
+  if (shouldToast) showToast("已审核通过");
+  if (shouldRender) render();
+  return true;
 }
 
 async function rejectRegistration(registrationNo, reason) {
-  const entry = getSelectedAdminRegistration();
+  const targetNo = safeText(registrationNo || uiState.selectedRegistrationNo).trim();
+  const entry = getAdminRegistrationByNo(targetNo);
   const rejectReason = safeText(reason).trim();
   if (!entry || entry.record.status !== "pending_review" || entry.order?.paymentStatus !== "paid") {
-    showToast("当前报名不可驳回");
+    showToast("当前报名不可审核");
     return;
   }
   if (rejectReason.length < 2) {
@@ -723,26 +992,36 @@ async function rejectRegistration(registrationNo, reason) {
 
   const reviewedAt = nowIso();
   try {
-    const remoteEntry = await reviewRemoteRegistration(registrationNo, "rejected", rejectReason);
+    const remoteEntry = await reviewRemoteRegistration(targetNo, "rejected", rejectReason);
     if (remoteEntry) {
       upsertRemoteRegistrationEntry(remoteEntry);
       upsertLocalCompletedEntry(remoteEntry);
       syncReviewedRecordToActiveState(remoteEntry.record);
+      clearAdminQuickRejectReason(targetNo);
       saveState();
-      showToast("已驳回报名");
+      showToast("已审核驳回");
       render();
+      return;
+    }
+    if (isRemoteEnabled()) {
+      showToast("当前报名不可审核");
       return;
     }
   } catch (error) {
     console.warn("reviewRemoteRegistration rejected failed", error);
+    if (isRemoteEnabled()) {
+      showToast("当前报名不可审核");
+      return;
+    }
   }
 
   entry.record.status = "rejected";
   entry.record.reviewedAt = reviewedAt;
   entry.record.rejectReason = rejectReason;
   syncReviewedRecordToActiveState(entry.record);
+  clearAdminQuickRejectReason(targetNo);
   saveState();
-  showToast("已驳回报名");
+  showToast("已审核驳回");
   render();
 }
 
@@ -807,13 +1086,151 @@ function exportApprovedRegistrationsJson() {
   link.remove();
   URL.revokeObjectURL(url);
 
-  showToast(`已导出 ${exportData.registrations.length} 条正式名单`);
+  showToast(`已导出 ${exportData.registrations.length} 条正式名单 JSON`);
   return exportData;
+}
+
+function exportApprovedRegistrationsExcel() {
+  const filteredRegistrations = getFilteredApprovedRegistrations();
+  if (!filteredRegistrations.length) {
+    showToast("当前筛选条件下没有可导出的正式名单");
+    return [];
+  }
+
+  const rows = buildApprovedRegistrationsExcelRows(filteredRegistrations);
+  const csvRows = rows.map((row) => row.map(escapeCsvCell).join(","));
+  const csvContent = `\uFEFF${csvRows.join("\r\n")}`;
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const dataRowCount = filteredRegistrations.length;
+
+  link.href = url;
+  link.download = buildApprovedExportFileName(uiState.adminExportGroupFilter, uiState.adminExportEventFilter);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  showToast(buildApprovedExportToastText(dataRowCount, uiState.adminExportGroupFilter, uiState.adminExportEventFilter));
+  return rows;
+}
+
+function buildApprovedRegistrationsExcelRows(filteredRegistrations = getFilteredApprovedRegistrations()) {
+  const header = [
+    "报名编号",
+    "订单号",
+    "姓名",
+    "性别",
+    "出生日期",
+    "出生年份",
+    "手机号",
+    "单位",
+    "组别",
+    "项目",
+    "证件类型",
+    "证件号",
+    "支付状态",
+    "支付时间",
+    "审核状态",
+    "是否上传保险单",
+  ];
+
+  const dataRows = filteredRegistrations.map((item) => [
+    item.registrationNo,
+    item.orderNo,
+    item.name,
+    item.genderLabel,
+    item.birthDate,
+    item.birthYear ?? "",
+    item.phone,
+    item.teamName,
+    item.groupName,
+    normalizeArray(item.eventNames).join("、"),
+    certificateTypeLabel(item.certificateType),
+    item.certificateNumber,
+    paymentStatusLabel(item.paymentStatus),
+    item.paidAt,
+    statusLabel(item.status),
+    item.insuranceUploaded ? "是" : "否",
+  ]);
+
+  return [header, ...dataRows];
+}
+
+function getApprovedRegistrationExportFilterOptions() {
+  const registrations = buildApprovedRegistrationsExport().registrations;
+  // 当前为通用中文排序；后续如需 U18、U15、公开组等固定业务顺序，可在这里扩展自定义排序规则。
+  const groups = Array.from(new Set(registrations.map((item) => safeText(item.groupName)).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-CN"));
+  const events = Array.from(
+    new Set(
+      registrations
+        .flatMap((item) => normalizeArray(item.eventNames))
+        .map((item) => safeText(item))
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "zh-CN"));
+
+  return { groups, events };
+}
+
+function normalizeAdminExportFilters(options = getApprovedRegistrationExportFilterOptions()) {
+  if (uiState.adminExportGroupFilter !== "all" && !options.groups.includes(uiState.adminExportGroupFilter)) {
+    uiState.adminExportGroupFilter = "all";
+  }
+  if (uiState.adminExportEventFilter !== "all" && !options.events.includes(uiState.adminExportEventFilter)) {
+    uiState.adminExportEventFilter = "all";
+  }
+}
+
+function getFilteredApprovedRegistrations() {
+  const exportData = buildApprovedRegistrationsExport();
+  const groupFilter = uiState.adminExportGroupFilter || "all";
+  const eventFilter = uiState.adminExportEventFilter || "all";
+
+  return exportData.registrations.filter((item) => {
+    const groupMatched = groupFilter === "all" || item.groupName === groupFilter;
+    const eventMatched = eventFilter === "all" || normalizeArray(item.eventNames).includes(eventFilter);
+    return groupMatched && eventMatched;
+  });
+}
+
+function buildApprovedExportFileName(groupFilter, eventFilter) {
+  const groupPart = groupFilter && groupFilter !== "all" ? groupFilter : "";
+  const eventPart = eventFilter && eventFilter !== "all" ? eventFilter : "";
+  const suffix = [groupPart, eventPart].filter(Boolean).join("-") || "all";
+  return `approved-registrations-${sanitizeDownloadFileName(suffix)}.csv`;
+}
+
+function buildApprovedExportToastText(count, groupFilter, eventFilter) {
+  const groupPart = groupFilter && groupFilter !== "all" ? groupFilter : "";
+  const eventPart = eventFilter && eventFilter !== "all" ? eventFilter : "";
+  const filterText = [groupPart, eventPart].filter(Boolean).join(" / ");
+  return filterText ? `已导出 ${count} 条 ${filterText} 正式名单 Excel` : `已导出 ${count} 条正式名单 Excel`;
+}
+
+function sanitizeDownloadFileName(name) {
+  const cleanedName = safeText(name)
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/[（）()]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^\.+|\.+$/g, "")
+    .replace(/^-+|-+$/g, "");
+
+  return cleanedName || "all";
+}
+
+function escapeCsvCell(value) {
+  const text = safeText(value);
+  const escapedText = text.replaceAll('"', '""');
+  return /[",\r\n]/.test(escapedText) ? `"${escapedText}"` : escapedText;
 }
 
 function buildApprovedRegistrationsExport() {
   const currentEvent = getCurrentEventConfig();
-  const registrations = completedRecords
+  const registrations = getAdminRegistrationEntries()
     .filter(({ record, order: recordOrder }) => {
       const status = record?.status || "";
       const paymentStatus = recordOrder?.paymentStatus || "";

@@ -174,7 +174,12 @@ async function reviewRemoteRegistration(registrationNo, nextStatus, rejectReason
     reject_reason: status === "rejected" ? safeText(rejectReason).trim() : "",
     reviewed_at: nowIso(),
   };
-  const query = [remoteEq("event_id", config.eventId), remoteEq("registration_no", safeText(registrationNo).trim().toUpperCase())].join("&");
+  const query = [
+    remoteEq("event_id", config.eventId),
+    remoteEq("registration_no", safeText(registrationNo).trim().toUpperCase()),
+    remoteEq("status", "pending_review"),
+    remoteEq("payment_status", "paid"),
+  ].join("&");
   const rows = await supabaseRestRequest("registrations", {
     method: "PATCH",
     query,
