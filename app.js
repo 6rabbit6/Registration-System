@@ -1133,14 +1133,18 @@ function copyTextWithFallback(text) {
 function handleBack() {
   if (uiState.currentPage === "detail") return;
 
-  if (uiState.currentPage === "form" && hasDraftContent()) {
-    openModal({
-      title: "确认退出",
-      message: "您还未完成报名，确认退出当前页面？下次进入可继续填写信息。",
-      confirmText: "确定",
-      cancelText: "取消",
-      confirmName: "leave-form",
-    });
+  if (uiState.currentPage === "form") {
+    if (hasDraftContent()) {
+      openModal({
+        title: "确认退出",
+        message: "您还未完成报名，确认退出当前页面？下次进入可继续填写信息。",
+        confirmText: "确定",
+        cancelText: "取消",
+        confirmName: "leave-form",
+      });
+      return;
+    }
+    goToPage("detail", { replace: true });
     return;
   }
 
