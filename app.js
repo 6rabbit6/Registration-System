@@ -29,8 +29,10 @@ function bindEvents() {
 }
 
 async function hydrateInitialRemoteData() {
-  await loadRemoteEventIntoState();
-  await loadRemoteOrganizationsIntoState();
+  const loadedRemoteRegistrationConfig = await loadRemoteEventIntoState();
+  if (!loadedRemoteRegistrationConfig) {
+    await loadRemoteOrganizationsIntoState();
+  }
   normalizeDraftAfterConfigChange({ silent: true });
   syncDerivedDraftFields();
 }
@@ -38,12 +40,18 @@ async function hydrateInitialRemoteData() {
 async function loadRemoteEventIntoState() {
   try {
     const remoteEvent = await loadRemoteEvent();
-    if (!remoteEvent) return;
+    if (!remoteEvent) return false;
     const currentEvent = getCurrentEventConfig();
     appState.eventConfig = sanitizeEventConfig(mergeRemoteEventConfig(currentEvent, remoteEvent));
+    if (remoteEvent.registrationConfig) {
+      appState.registrationConfig = sanitizeRegistrationConfig(remoteEvent.registrationConfig);
+    }
     formDraft.eventId = appState.eventConfig.id;
+    saveConfig();
+    return Boolean(remoteEvent.registrationConfig);
   } catch (error) {
     console.warn("loadRemoteEvent failed", error);
+    return false;
   }
 }
 

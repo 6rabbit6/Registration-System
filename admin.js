@@ -1750,14 +1750,31 @@ async function saveAdminConfigDraft() {
     return;
   }
 
-  appState.eventConfig = sanitizeEventConfig(adminDraft.eventConfig);
-  appState.registrationConfig = sanitizeRegistrationConfig(adminDraft.registrationConfig);
+  const nextEventConfig = sanitizeEventConfig(adminDraft.eventConfig);
+  const nextRegistrationConfig = sanitizeRegistrationConfig(adminDraft.registrationConfig);
+  let remoteEventConfig = null;
+
+  try {
+    remoteEventConfig = await saveRemoteEventConfig(nextEventConfig, nextRegistrationConfig);
+  } catch (error) {
+    console.error("saveRemoteEventConfig failed", error);
+    showToast("远程保存失败，请稍后重试");
+    return;
+  }
+
+  if (!remoteEventConfig) {
+    showToast("远程保存失败，请稍后重试");
+    return;
+  }
+
+  appState.eventConfig = sanitizeEventConfig(remoteEventConfig);
+  appState.registrationConfig = sanitizeRegistrationConfig(remoteEventConfig.registrationConfig || nextRegistrationConfig);
   saveConfig();
   const normalizeMessage = normalizeDraftAfterConfigChange();
   saveState();
   adminDraft = createAdminDraftFromCurrent();
   render();
-  showToast(normalizeMessage || "配置已保存");
+  showToast(normalizeMessage || "配置已保存并同步到云端");
 }
 
 function validateAdminConfig(draft) {

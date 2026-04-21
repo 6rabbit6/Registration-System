@@ -111,11 +111,12 @@ async function supabaseRestRequest(tableName, options = {}) {
   if (!config.enabled) return null;
 
   const query = options.query ? `?${options.query}` : "";
+  const authorizationToken = await getSupabaseRestAuthorizationToken(config);
   const response = await fetch(`${config.supabaseUrl}/rest/v1/${tableName}${query}`, {
     method: options.method || "GET",
     headers: {
       apikey: config.supabaseAnonKey,
-      Authorization: `Bearer ${config.supabaseAnonKey}`,
+      Authorization: `Bearer ${authorizationToken}`,
       "Content-Type": "application/json",
       Prefer: options.prefer || "return=representation",
     },
@@ -129,6 +130,18 @@ async function supabaseRestRequest(tableName, options = {}) {
 
   if (response.status === 204) return null;
   return response.json();
+}
+
+async function getSupabaseRestAuthorizationToken(config) {
+  const client = getSupabaseAuthClient();
+  if (!client) return config.supabaseAnonKey;
+
+  try {
+    const { data } = await client.auth.getSession();
+    return data?.session?.access_token || config.supabaseAnonKey;
+  } catch {
+    return config.supabaseAnonKey;
+  }
 }
 
 function remoteEq(column, value) {
@@ -159,6 +172,32 @@ async function loadRemoteEvent() {
   const queryParts = ["select=*", "limit=1"];
   if (config.eventId) queryParts.push(remoteEq("id", config.eventId));
   const rows = await supabaseRestRequest("events", { query: queryParts.join("&") });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row ? mapDbEventToEventConfig(row) : null;
+}
+
+async function saveRemoteEventConfig(eventConfig, registrationConfig) {
+  const config = getRemoteConfig();
+  if (!config.enabled) return null;
+
+  const nextEventConfig = sanitizeEventConfig(eventConfig);
+  const nextRegistrationConfig = sanitizeRegistrationConfig(registrationConfig);
+  const eventId = safeText(nextEventConfig.id || config.eventId).trim();
+  if (!eventId) return null;
+
+  const payload = mapEventConfigToDbRow(
+    {
+      ...nextEventConfig,
+      id: eventId,
+    },
+    nextRegistrationConfig,
+  );
+
+  const rows = await supabaseRestRequest("events", {
+    method: "PATCH",
+    query: remoteEq("id", eventId),
+    body: payload,
+  });
   const row = Array.isArray(rows) ? rows[0] : null;
   return row ? mapDbEventToEventConfig(row) : null;
 }
@@ -275,6 +314,7 @@ function getRemoteRegistrationSearchColumn(query) {
 
 function mapDbEventToEventConfig(row) {
   const bannerUrl = pickRemoteValue(row, "banner_image_url", "banner_url", "bannerImageUrl");
+  const remoteRegistrationConfig = pickRemoteValue(row, "registration_config", "registrationConfig");
   return {
     id: safeText(pickRemoteValue(row, "id")),
     name: safeText(pickRemoteValue(row, "name")),
@@ -308,6 +348,37 @@ function mapDbEventToEventConfig(row) {
       imageUrl: safeText(pickRemoteValue(row, "share_image_url", "shareImageUrl")),
     },
     description: normalizeRemoteDescription(pickRemoteValue(row, "description")),
+    registrationConfig: normalizeRemoteRegistrationConfig(remoteRegistrationConfig),
+  };
+}
+
+function mapEventConfigToDbRow(eventConfig, registrationConfig) {
+  const bannerImage = sanitizeBannerImage(eventConfig?.bannerImage);
+  const shareCard = sanitizeShareCard(eventConfig?.shareCard);
+  const regulationFile = eventConfig?.regulationFile || {};
+  const commitmentFile = eventConfig?.commitmentFile || {};
+
+  return {
+    id: safeText(eventConfig?.id),
+    name: safeText(eventConfig?.name),
+    registration_start_date: toNullableText(eventConfig?.registrationStartDate),
+    registration_end_date: toNullableText(eventConfig?.registrationEndDate),
+    competition_start_date: toNullableText(eventConfig?.competitionStartDate),
+    competition_end_date: toNullableText(eventConfig?.competitionEndDate),
+    location: safeText(eventConfig?.location),
+    description: normalizeArray(eventConfig?.description),
+    regulation_file_name: safeText(regulationFile.name),
+    regulation_file_url: safeText(regulationFile.url),
+    commitment_file_name: safeText(commitmentFile.name),
+    commitment_file_url: safeText(commitmentFile.url),
+    banner_image_url: safeText(bannerImage.url),
+    banner_image_name: safeText(bannerImage.name),
+    banner_fit_mode: bannerImage.fitMode === "contain" ? "contain" : "cover",
+    banner_uploaded_at: toNullableTimestamp(bannerImage.uploadedAt),
+    share_title: safeText(shareCard.title),
+    share_description: safeText(shareCard.description),
+    share_image_url: safeText(shareCard.imageUrl),
+    registration_config: sanitizeRegistrationConfig(registrationConfig),
   };
 }
 
@@ -446,6 +517,16 @@ function pickRemoteValue(source, ...keys) {
     if (value != null && value !== "") return value;
   }
   return "";
+}
+
+function toNullableText(value) {
+  const text = safeText(value).trim();
+  return text ? text : null;
+}
+
+function normalizeRemoteRegistrationConfig(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return sanitizeRegistrationConfig(value);
 }
 
 function normalizeRemoteDescription(value) {
