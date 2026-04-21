@@ -9,7 +9,7 @@ const moreMenuRoot = document.querySelector("#moreMenuRoot");
 init();
 
 async function init() {
-  loadAdminAuth();
+  await loadAdminAuth();
   loadConfig();
   loadState();
   normalizeDraftAfterConfigChange({ silent: true });
@@ -190,10 +190,10 @@ async function handleClick(eventTarget) {
     goToPage(isAdminLoggedIn() ? "admin_dashboard" : "admin_login");
   }
   if (action === "admin-login") {
-    handleAdminLogin();
+    await handleAdminLogin();
   }
   if (action === "admin-logout") {
-    handleAdminLogout();
+    await handleAdminLogout();
   }
   if (action === "admin-go-registrations") {
     goToPage("admin_registrations");
@@ -354,8 +354,8 @@ function handleInput(eventTarget) {
     return;
   }
 
-  if (input.name === "adminUsername" || input.name === "adminPassword") {
-    uiState.adminLogin[input.name === "adminUsername" ? "username" : "password"] = input.value;
+  if (input.name === "adminEmail" || input.name === "adminPassword") {
+    uiState.adminLogin[input.name === "adminEmail" ? "email" : "password"] = input.value;
     uiState.adminLogin.error = "";
     return;
   }
@@ -621,7 +621,7 @@ function renderBottomBar() {
     bottomBar.classList.add("has-secondary");
     bottomBar.innerHTML = `
       <button class="secondary-button" type="button" data-action="home">返回详情</button>
-      <button class="primary-button" type="button" data-action="admin-login">登录</button>
+      <button class="primary-button" type="button" data-action="admin-login" ${uiState.adminLogin.isLoading ? "disabled" : ""}>${uiState.adminLogin.isLoading ? "登录中..." : "登录"}</button>
     `;
     return;
   }

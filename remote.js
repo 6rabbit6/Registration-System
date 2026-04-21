@@ -1,5 +1,7 @@
 const remoteConfigStorageKey = "registration-system-supabase-config-v1";
 // Configure by setting window.REGISTRATION_SUPABASE_CONFIG or this localStorage key.
+let supabaseAuthClient = null;
+let supabaseAuthClientKey = "";
 
 function getRemoteConfig() {
   const inlineConfig = window.REGISTRATION_SUPABASE_CONFIG || {};
@@ -26,6 +28,82 @@ function readStoredRemoteConfig() {
 
 function isRemoteEnabled() {
   return getRemoteConfig().enabled;
+}
+
+function getAdminConfig() {
+  const config = window.REGISTRATION_ADMIN_CONFIG || {};
+  return {
+    allowedAdminEmails: Array.isArray(config.allowedAdminEmails) ? config.allowedAdminEmails.map(normalizeAdminEmail).filter(Boolean) : [],
+  };
+}
+
+function normalizeAdminEmail(email) {
+  return safeText(email).trim().toLowerCase();
+}
+
+function isAllowedAdminEmail(email) {
+  const allowedEmails = getAdminConfig().allowedAdminEmails;
+  const normalizedEmail = normalizeAdminEmail(email);
+  return Boolean(normalizedEmail && allowedEmails.includes(normalizedEmail));
+}
+
+function isAdminAllowlistConfigured() {
+  return getAdminConfig().allowedAdminEmails.length > 0;
+}
+
+function getSupabaseAuthClient() {
+  const config = getRemoteConfig();
+  if (!config.enabled || !window.supabase?.createClient) return null;
+
+  const clientKey = `${config.supabaseUrl}|${config.supabaseAnonKey}`;
+  if (supabaseAuthClient && supabaseAuthClientKey === clientKey) return supabaseAuthClient;
+
+  supabaseAuthClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+  });
+  supabaseAuthClientKey = clientKey;
+  return supabaseAuthClient;
+}
+
+async function loadSupabaseAdminSession() {
+  const client = getSupabaseAuthClient();
+  if (!client) return null;
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  return data?.session || null;
+}
+
+async function signInAdminWithSupabase(email, password) {
+  if (!isRemoteEnabled()) {
+    const error = new Error("当前未启用远程服务，无法使用管理员登录");
+    error.code = "REMOTE_DISABLED";
+    throw error;
+  }
+
+  const client = getSupabaseAuthClient();
+  if (!client) {
+    const error = new Error("管理员登录组件加载失败，请刷新后重试");
+    error.code = "AUTH_CLIENT_UNAVAILABLE";
+    throw error;
+  }
+
+  const { data, error } = await client.auth.signInWithPassword({
+    email: safeText(email).trim(),
+    password,
+  });
+  if (error) throw error;
+  return data?.session || null;
+}
+
+async function signOutAdminWithSupabase() {
+  const client = getSupabaseAuthClient();
+  if (!client) return;
+  const { error } = await client.auth.signOut();
+  if (error) throw error;
 }
 
 async function supabaseRestRequest(tableName, options = {}) {

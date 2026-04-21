@@ -185,9 +185,10 @@ const uiState = {
   remoteDetailLoading: false,
   remoteDetailMissRegistrationNo: "",
   adminLogin: {
-    username: "",
+    email: "",
     password: "",
     error: "",
+    isLoading: false,
   },
   adminRegistrationFilter: "all",
   adminRegistrationSearch: "",
@@ -211,26 +212,43 @@ const uiState = {
 };
 
 function isAdminLoggedIn() {
-  return Boolean(adminAuth?.isLoggedIn);
+  return Boolean(adminAuth?.session?.access_token && isAllowedAdminEmail(adminAuth?.user?.email || adminAuth?.session?.user?.email));
 }
 
-function loadAdminAuth() {
+async function loadAdminAuth() {
+  adminAuth = { isLoggedIn: false, user: null, session: null };
   try {
-    const raw = localStorage.getItem(adminAuthStorageKey);
-    adminAuth = raw ? JSON.parse(raw) : { isLoggedIn: false };
-    adminAuth.isLoggedIn = Boolean(adminAuth.isLoggedIn);
+    localStorage.removeItem(adminAuthStorageKey);
+    if (typeof loadSupabaseAdminSession !== "function") return;
+    const session = await loadSupabaseAdminSession();
+    if (session && !isAllowedAdminEmail(session.user?.email)) {
+      await signOutAdminWithSupabase();
+      clearAdminAuth();
+      return;
+    }
+    setAdminAuthSession(session);
   } catch {
     clearAdminAuth();
   }
 }
 
 function saveAdminAuth() {
-  localStorage.setItem(adminAuthStorageKey, JSON.stringify({ isLoggedIn: Boolean(adminAuth.isLoggedIn) }));
+  localStorage.removeItem(adminAuthStorageKey);
+}
+
+function setAdminAuthSession(session) {
+  adminAuth = session
+    ? {
+        isLoggedIn: true,
+        user: session.user || null,
+        session,
+      }
+    : { isLoggedIn: false, user: null, session: null };
 }
 
 function clearAdminAuth() {
-  adminAuth = { isLoggedIn: false };
-  localStorage.setItem(adminAuthStorageKey, JSON.stringify(adminAuth));
+  adminAuth = { isLoggedIn: false, user: null, session: null };
+  localStorage.removeItem(adminAuthStorageKey);
 }
 
 function loadConfig() {

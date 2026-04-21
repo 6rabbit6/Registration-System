@@ -6,11 +6,11 @@ function renderAdminLoginPage() {
       <section class="admin-auth-card">
         <h2>后台登录</h2>
         <label class="admin-config-field">
-          <span>用户名</span>
-          <input type="text" name="adminUsername" value="${escapeHtml(uiState.adminLogin.username)}" placeholder="请输入用户名" autocomplete="username" />
+          <span>管理员邮箱</span>
+          <input type="email" name="adminEmail" value="${escapeHtml(uiState.adminLogin.email)}" placeholder="请输入管理员邮箱" autocomplete="username" />
         </label>
         <label class="admin-config-field">
-          <span>密码</span>
+          <span>登录密码</span>
           <input type="password" name="adminPassword" value="${escapeHtml(uiState.adminLogin.password)}" placeholder="请输入密码" autocomplete="current-password" />
         </label>
         ${uiState.adminLogin.error ? `<p class="admin-auth-error">${escapeHtml(uiState.adminLogin.error)}</p>` : ""}
@@ -674,29 +674,68 @@ function requireAdminAuth(targetPage) {
   return isAdminLoggedIn() ? targetPage : "admin_login";
 }
 
-function handleAdminLogin() {
-  const username = uiState.adminLogin.username.trim();
+async function handleAdminLogin() {
+  const email = uiState.adminLogin.email.trim();
   const password = uiState.adminLogin.password;
 
-  if (username === "admin" && password === "123456") {
-    adminAuth = { isLoggedIn: true };
-    saveAdminAuth();
-    uiState.adminLogin = { username: "", password: "", error: "" };
-    showToast("登录成功");
-    goToPage("admin_dashboard");
+  if (!email || !password) {
+    uiState.adminLogin.error = "请输入管理员邮箱和登录密码";
+    render();
     return;
   }
 
-  uiState.adminLogin.error = "用户名或密码错误";
+  uiState.adminLogin.error = "";
+  uiState.adminLogin.isLoading = true;
   render();
+
+  try {
+    const session = await signInAdminWithSupabase(email, password);
+    if (!isAdminAllowlistConfigured()) {
+      await signOutAdminWithSupabase();
+      clearAdminAuth();
+      uiState.adminLogin.error = "管理员白名单未配置，请联系系统维护人员";
+      return;
+    }
+    if (!isAllowedAdminEmail(session?.user?.email)) {
+      await signOutAdminWithSupabase();
+      clearAdminAuth();
+      uiState.adminLogin.error = "当前账号没有后台权限";
+      return;
+    }
+    setAdminAuthSession(session);
+    uiState.adminLogin = { email: "", password: "", error: "", isLoading: false };
+    showToast("登录成功");
+    goToPage("admin_dashboard");
+    return;
+  } catch (error) {
+    console.warn("admin sign in failed", error);
+    uiState.adminLogin.error = getAdminLoginErrorMessage(error);
+  } finally {
+    uiState.adminLogin.isLoading = false;
+    render();
+  }
 }
 
-function handleAdminLogout() {
+function getAdminLoginErrorMessage(error) {
+  const message = safeText(error?.message);
+  if (error?.code === "REMOTE_DISABLED") return "当前未启用远程服务，无法使用管理员登录";
+  if (error?.code === "AUTH_CLIENT_UNAVAILABLE") return "管理员登录组件加载失败，请刷新后重试";
+  if (/invalid login credentials/i.test(message)) return "邮箱或密码错误";
+  if (/fetch|network|failed to fetch/i.test(message)) return "网络异常，请稍后重试";
+  return message || "登录失败，请稍后重试";
+}
+
+async function handleAdminLogout() {
+  try {
+    await signOutAdminWithSupabase();
+  } catch (error) {
+    console.warn("admin sign out failed", error);
+  }
   clearAdminAuth();
   adminDraft = null;
   closeMoreMenu();
   showToast("已退出登录");
-  goToPage("detail");
+  goToPage("admin_login");
 }
 
 function getPaidCompletedRecords() {
