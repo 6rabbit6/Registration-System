@@ -171,6 +171,7 @@ const uiState = {
   isSubmitting: false,
   isPaying: false,
   remoteSaveStatus: "idle",
+  remoteSaveErrorMessage: "",
   toast: "",
   message: "",
   validationErrors: {},

@@ -117,7 +117,7 @@ function renderPaymentPage() {
       </section>
       <p class="hint-line">${
         remoteSaveFailed
-          ? "报名支付成功，但远程保存失败，请点击重试保存。"
+          ? `${escapeHtml(uiState.remoteSaveErrorMessage || "报名支付成功，但远程保存失败，请点击重试保存。")}`
           : remoteSaveSaving
             ? "正在保存报名记录，请稍候..."
             : "当前为模拟微信支付，不会产生真实扣款。"

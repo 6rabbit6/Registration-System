@@ -191,9 +191,7 @@ function renderAdminRegistrationDetailPage() {
   const canReview = record.status === "pending_review";
   const paymentAmount = getAdminPaymentAmount(record, recordOrder);
   const paidAtText = formatDateTime(recordOrder.paidAt);
-  const insuranceContent = record.insuranceFile?.previewUrl
-    ? `<img class="readonly-image" src="${record.insuranceFile.previewUrl}" alt="保险单预览" />`
-    : escapeHtml(record.insuranceFile?.name || (record.insuranceFile ? "已上传" : "未上传"));
+  const insuranceContent = renderAdminInsuranceContent(record.insuranceFile);
 
   screen.innerHTML = `
     <article class="admin-management-page">
@@ -228,6 +226,24 @@ function renderAdminRegistrationDetailPage() {
       }
     </article>
   `;
+}
+
+function renderAdminInsuranceContent(file) {
+  const fileUrl = safeText(file?.remoteUrl || file?.url || file?.previewUrl).trim();
+  if (fileUrl && isInsuranceImageUrl(fileUrl, file?.type)) {
+    return `<a class="insurance-preview-link" href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener"><img class="readonly-image" src="${escapeHtml(fileUrl)}" alt="保险单预览" /></a>`;
+  }
+  if (fileUrl) {
+    return `<a class="insurance-file-link" href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener">查看文件</a>`;
+  }
+  if (file) return escapeHtml(file.name || "已上传");
+  return "未上传";
+}
+
+function isInsuranceImageUrl(url, type) {
+  const normalizedType = safeText(type).toLowerCase();
+  if (normalizedType.startsWith("image/")) return true;
+  return /\.(jpe?g|png|webp)(\?|#|$)/i.test(safeText(url));
 }
 
 function renderAdminStatsPage() {

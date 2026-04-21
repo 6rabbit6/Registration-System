@@ -215,7 +215,8 @@ async function loadRemoteOrganizations() {
 
 async function createRemoteRegistration(record, recordOrder) {
   if (!isRemoteEnabled()) return null;
-  const payload = sanitizeRemoteRegistrationPayloadTimestamps(mapRegistrationToDbRow(record, recordOrder));
+  const recordForSave = await resolveInsuranceFileForRemoteSave(record, recordOrder);
+  const payload = sanitizeRemoteRegistrationPayloadTimestamps(mapRegistrationToDbRow(recordForSave, recordOrder));
   console.log("createRemoteRegistration payload:", payload);
   const rows = await supabaseRestRequest("registrations", {
     method: "POST",
@@ -223,6 +224,29 @@ async function createRemoteRegistration(record, recordOrder) {
   });
   const row = Array.isArray(rows) ? rows[0] : null;
   return row ? mapDbRegistrationToEntry(row) : null;
+}
+
+async function resolveInsuranceFileForRemoteSave(record, recordOrder) {
+  const insuranceFile = record?.insuranceFile;
+  if (!insuranceFile) return record;
+
+  const existingRemoteUrl = getRemoteInsuranceFileUrl(insuranceFile);
+  if (existingRemoteUrl) return record;
+
+  let uploadedUrl = "";
+  try {
+    uploadedUrl = await uploadInsuranceFileToStorage(insuranceFile, record, recordOrder);
+  } catch (error) {
+    throw new Error(`Insurance upload failed: ${error?.message || "unknown error"}`);
+  }
+  return {
+    ...record,
+    insuranceFile: {
+      ...insuranceFile,
+      previewUrl: uploadedUrl,
+      remoteUrl: uploadedUrl,
+    },
+  };
 }
 
 async function findRemoteDuplicateRegistration(eventId, certificateNumber) {
@@ -466,6 +490,7 @@ function mapDbRegistrationToEntry(row) {
           type: "remote",
           size: 0,
           previewUrl: safeText(row.insurance_file_url),
+          remoteUrl: safeText(row.insurance_file_url),
         }
       : null,
     totalAmount: Number(row.total_amount) || 0,
@@ -538,7 +563,107 @@ function normalizeRemoteDescription(value) {
 }
 
 function getRemoteInsuranceFileUrl(file) {
-  const previewUrl = safeText(file?.previewUrl).trim();
+  const previewUrl = safeText(file?.remoteUrl || file?.url || file?.storageUrl || file?.previewUrl).trim();
   if (!previewUrl || previewUrl.startsWith("data:")) return "";
   return previewUrl;
+}
+
+async function uploadInsuranceFileToStorage(file, record, recordOrder) {
+  const client = getSupabaseAuthClient();
+  if (!client) throw new Error("Supabase Storage client unavailable");
+
+  const uploadSource = getInsuranceUploadSource(file);
+  if (!uploadSource?.body) {
+    throw new Error("Insurance upload source unavailable");
+  }
+
+  validateInsuranceUploadType(uploadSource.contentType);
+  const config = getRemoteConfig();
+  const bucketName = "registration-files";
+  const filePath = getInsuranceStorageFilePath(file, record, recordOrder, config, uploadSource.extension);
+  const { error } = await client.storage.from(bucketName).upload(filePath, uploadSource.body, {
+    cacheControl: "3600",
+    contentType: uploadSource.contentType,
+    upsert: false,
+  });
+  if (error) throw error;
+
+  const { data } = client.storage.from(bucketName).getPublicUrl(filePath);
+  const publicUrl = safeText(data?.publicUrl).trim();
+  if (!publicUrl) throw new Error("Insurance public URL unavailable");
+  return publicUrl;
+}
+
+function getInsuranceStorageFilePath(file, record, recordOrder, config, extension) {
+  const eventId = sanitizeStoragePathPart(record?.eventId || recordOrder?.eventId || config.eventId || getCurrentEventConfig().id, "event");
+  const registrationNo = sanitizeStoragePathPart(record?.registrationNo || recordOrder?.registrationNo || recordOrder?.orderNo, "registration");
+  const timestamp = Date.now();
+  const randomPart = Math.random().toString(36).slice(2, 8);
+  return `${eventId}/insurance/${registrationNo}-${timestamp}-${randomPart}.${extension || getInsuranceFileExtension(file)}`;
+}
+
+function getInsuranceUploadSource(file) {
+  const uploadFile = file?.uploadFile || file?.rawFile || file?.file || file?.blob;
+  if (typeof Blob !== "undefined" && uploadFile instanceof Blob) {
+    return {
+      body: uploadFile,
+      contentType: uploadFile.type || file?.type || "application/octet-stream",
+      extension: getInsuranceFileExtension({ ...file, type: uploadFile.type || file?.type }),
+    };
+  }
+
+  const previewUrl = safeText(file?.previewUrl).trim();
+  if (previewUrl.startsWith("data:")) {
+    return dataUrlToInsuranceUploadSource(previewUrl, file);
+  }
+
+  return null;
+}
+
+function dataUrlToInsuranceUploadSource(dataUrl, file) {
+  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+  if (!match) return null;
+
+  const contentType = match[1] || file?.type || "application/octet-stream";
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || "";
+  const binary = isBase64 ? atob(payload) : decodeURIComponent(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return {
+    body: new Blob([bytes], { type: contentType }),
+    contentType,
+    extension: getInsuranceFileExtension({ ...file, type: contentType }),
+  };
+}
+
+function validateInsuranceUploadType(contentType) {
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+  if (!allowedTypes.has(safeText(contentType))) {
+    throw new Error("Insurance unsupported file type");
+  }
+}
+
+function getInsuranceFileExtension(file) {
+  const nameExtension = safeText(file?.name).split(".").pop().toLowerCase();
+  const safeNameExtension = /^[a-z0-9]{2,8}$/.test(nameExtension) ? nameExtension : "";
+  if (safeNameExtension) return safeNameExtension === "jpeg" ? "jpg" : safeNameExtension;
+
+  const type = safeText(file?.type).toLowerCase();
+  if (type === "image/jpeg") return "jpg";
+  if (type === "image/png") return "png";
+  if (type === "image/webp") return "webp";
+  if (type === "application/pdf") return "pdf";
+  return "bin";
+}
+
+function sanitizeStoragePathPart(value, fallback) {
+  const text = safeText(value)
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return text || fallback;
 }

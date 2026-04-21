@@ -5,6 +5,7 @@ const progressSteps = document.querySelector("#progressSteps");
 const modalRoot = document.querySelector("#modalRoot");
 const phoneShell = document.querySelector(".phone-shell");
 const moreMenuRoot = document.querySelector("#moreMenuRoot");
+let pendingInsuranceUploadFile = null;
 
 init();
 
@@ -799,6 +800,7 @@ function payMockOrder() {
 
   uiState.isPaying = true;
   uiState.remoteSaveStatus = "saving";
+  uiState.remoteSaveErrorMessage = "";
   renderBottomBar();
 
   window.setTimeout(async () => {
@@ -826,22 +828,62 @@ function payMockOrder() {
     uiState.remoteSaveStatus = "failed";
     saveState();
     render();
-    showToast("报名支付成功，但远程保存失败，请重试");
+    showToast(uiState.remoteSaveErrorMessage || "报名支付成功，但远程保存失败，请重试");
   }, 700);
 }
 
 async function saveRemoteRegistrationAfterPayment() {
   if (!isRemoteEnabled()) return true;
   try {
-    const remoteEntry = await createRemoteRegistration(registrationRecord, order);
+    const remoteEntry = await createRemoteRegistration(buildRemoteRegistrationRecordForSave(), order);
     if (remoteEntry) {
+      syncInsuranceFileAfterRemoteSave(remoteEntry);
       upsertRemoteRegistrationEntry(remoteEntry);
       return true;
     }
   } catch (error) {
     console.warn("createRemoteRegistration failed", error);
+    if (safeText(error?.message).includes("Insurance")) {
+      uiState.remoteSaveErrorMessage = "保险单上传失败，请稍后重试";
+    } else {
+      uiState.remoteSaveErrorMessage = "远程保存失败，请稍后重试";
+    }
   }
   return false;
+}
+
+function buildRemoteRegistrationRecordForSave() {
+  if (!registrationRecord) return registrationRecord;
+  const recordForSave = {
+    ...registrationRecord,
+    insuranceFile: registrationRecord.insuranceFile ? { ...registrationRecord.insuranceFile } : null,
+  };
+  if (recordForSave.insuranceFile && pendingInsuranceUploadFile) {
+    recordForSave.insuranceFile.uploadFile = pendingInsuranceUploadFile;
+  }
+  return recordForSave;
+}
+
+function syncInsuranceFileAfterRemoteSave(remoteEntry) {
+  const remoteInsuranceFile = remoteEntry?.record?.insuranceFile;
+  const remoteUrl = safeText(remoteInsuranceFile?.previewUrl).trim();
+  if (!remoteUrl || !registrationRecord?.insuranceFile) return;
+
+  registrationRecord.insuranceFile = {
+    ...registrationRecord.insuranceFile,
+    ...remoteInsuranceFile,
+    name: registrationRecord.insuranceFile.name || remoteInsuranceFile.name || "已上传",
+    previewUrl: remoteUrl,
+    remoteUrl,
+  };
+
+  if (formDraft.insuranceFile) {
+    formDraft.insuranceFile = {
+      ...formDraft.insuranceFile,
+      previewUrl: remoteUrl,
+      remoteUrl,
+    };
+  }
 }
 
 async function retryRemoteRegistrationSave() {
@@ -853,6 +895,7 @@ async function retryRemoteRegistrationSave() {
 
   uiState.isPaying = true;
   uiState.remoteSaveStatus = "saving";
+  uiState.remoteSaveErrorMessage = "";
   render();
 
   const remoteSaved = await saveRemoteRegistrationAfterPayment();
@@ -868,7 +911,7 @@ async function retryRemoteRegistrationSave() {
   uiState.remoteSaveStatus = "failed";
   saveState();
   render();
-  showToast("远程保存失败，请稍后重试");
+  showToast(uiState.remoteSaveErrorMessage || "远程保存失败，请稍后重试");
 }
 
 async function searchRegistration() {
@@ -1351,6 +1394,7 @@ function toggleEventSelection(eventId, checked) {
 
 function handleInsuranceFile(file) {
   if (!file) return;
+  pendingInsuranceUploadFile = file;
   const reader = new FileReader();
   reader.onload = () => {
     formDraft.insuranceFile = {
@@ -1625,9 +1669,11 @@ function resetForNewRegistration() {
   formDraft = createEmptyDraft();
   registrationRecord = null;
   order = createEmptyOrder();
+  pendingInsuranceUploadFile = null;
   uiState.validationErrors = {};
   uiState.message = "";
   uiState.remoteSaveStatus = "idle";
+  uiState.remoteSaveErrorMessage = "";
   uiState.lastAutoParsedIdNumber = "";
   uiState.lastInvalidIdNumber = "";
   uiState.lastDuplicateCertificateNumber = "";

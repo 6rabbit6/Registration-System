@@ -1498,6 +1498,23 @@ button {
   object-fit: cover;
 }
 
+.insurance-preview-link {
+  display: inline-grid;
+  width: 132px;
+  height: 132px;
+}
+
+.insurance-file-link {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  border-radius: 4px;
+  color: var(--brand);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .camera-icon {
   color: #aeb3bb;
   font-size: 42px;
